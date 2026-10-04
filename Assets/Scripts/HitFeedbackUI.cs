@@ -22,6 +22,7 @@ public class HitFeedbackUI : MonoBehaviour
     private Camera gameCamera;
     private Vector3 targetPosition;
     private float rise;
+    private Sprite roundedPanelSprite;
     private readonly Color comboColor = new Color(1f, 0.82f, 0.32f);
 
     public void Initialize(Text template)
@@ -30,6 +31,7 @@ public class HitFeedbackUI : MonoBehaviour
         canvas = GetComponent<Canvas>();
         canvasRect = GetComponent<RectTransform>();
         gameCamera = Camera.main;
+        roundedPanelSprite = CreateRoundedPanelSprite();
         comboBadge = new GameObject("ComboBadge", typeof(RectTransform), typeof(Image));
         RectTransform badgeRect = comboBadge.GetComponent<RectTransform>();
         badgeRect.SetParent(transform, false);
@@ -37,7 +39,9 @@ public class HitFeedbackUI : MonoBehaviour
         badgeRect.anchoredPosition = new Vector2(0f, -112f);
         badgeRect.sizeDelta = new Vector2(200f, 44f);
         Image badgeImage = comboBadge.GetComponent<Image>();
-        badgeImage.color = new Color(0.04f, 0.06f, 0.1f, 0.94f);
+        badgeImage.sprite = roundedPanelSprite;
+        badgeImage.type = Image.Type.Sliced;
+        badgeImage.color = new Color(0.04f, 0.06f, 0.1f, 0.82f);
         badgeImage.raycastTarget = false;
         ComboText = CreateText("Combo", badgeRect, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(190f, 40f), 24);
         ComboText.color = comboColor;
@@ -50,7 +54,9 @@ public class HitFeedbackUI : MonoBehaviour
         perfectRect.pivot = new Vector2(0.5f, 0f);
         perfectRect.sizeDelta = new Vector2(340f, 110f);
         Image background = root.GetComponent<Image>();
-        background.color = new Color(0.04f, 0.06f, 0.1f, 0.94f);
+        background.sprite = roundedPanelSprite;
+        background.type = Image.Type.Sliced;
+        background.color = new Color(0.04f, 0.06f, 0.1f, 0.78f);
         background.raycastTarget = false;
         perfectGroup = root.GetComponent<CanvasGroup>();
         perfectGroup.blocksRaycasts = false;
@@ -75,6 +81,33 @@ public class HitFeedbackUI : MonoBehaviour
         VibrationButton.onClick.AddListener(ToggleVibration);
         vibrationLabel = CreateText("Label", buttonRect, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(240f, 56f), 22);
         UpdateVibrationLabel();
+    }
+
+    private static Sprite CreateRoundedPanelSprite()
+    {
+        const int size = 64;
+        const int radius = 16;
+        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "RoundedFeedbackPanel",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        var pixels = new Color32[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                var point = new Vector2(x + 0.5f, y + 0.5f);
+                var center = new Vector2(Mathf.Clamp(point.x, radius, size - radius), Mathf.Clamp(point.y, radius, size - radius));
+                float alpha = Mathf.Clamp01(radius + 0.5f - Vector2.Distance(point, center));
+                pixels[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(alpha * 255f));
+            }
+        }
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+        return Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f,
+            0, SpriteMeshType.FullRect, new Vector4(radius, radius, radius, radius));
     }
 
     private Text CreateText(string name, Transform parent, Vector2 anchor, Vector2 position, Vector2 size, int fontSize)
@@ -199,5 +232,10 @@ public class HitFeedbackUI : MonoBehaviour
     {
         if (VibrationButton)
             VibrationButton.onClick.RemoveListener(ToggleVibration);
+        if (roundedPanelSprite)
+        {
+            Destroy(roundedPanelSprite.texture);
+            Destroy(roundedPanelSprite);
+        }
     }
 }
