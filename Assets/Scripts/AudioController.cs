@@ -23,12 +23,21 @@ public class AudioController : MonoBehaviour
     public AudioSource countingSound;
     public float countingSoundDelay;
 
+    [Header("Perfect combo sound")]
+    [Min(0f)] public float comboPitchStep = 0.06f;
+    [Min(1f)] public float maximumComboPitchMultiplier = 1.3f;
+
     public static AudioController instance;
     private Coroutine musicRoutine;
     private Coroutine countingRoutine;
     private AudioSource currentMusic;
+    private float perfectBasePitch;
 
-    private void Awake() => instance = this;
+    private void Awake()
+    {
+        instance = this;
+        perfectBasePitch = releaseBarPerfectSound ? releaseBarPerfectSound.pitch : 1f;
+    }
     private void Start() => playIngameMusic();
 
     public static void playIngameMusic()
@@ -79,7 +88,15 @@ public class AudioController : MonoBehaviour
 
     public static void playJump() => Play(instance ? instance.jumpSound : null);
     public static void playReleaseBar() => Play(instance ? instance.releaseBarSound : null);
-    public static void playReleaseBarPerfect() => Play(instance ? instance.releaseBarPerfectSound : null);
+    public static void playReleaseBarPerfect(int combo = 1)
+    {
+        if (!instance || !instance.releaseBarPerfectSound)
+            return;
+        float multiplier = Mathf.Min(Mathf.Max(1f, instance.maximumComboPitchMultiplier),
+            1f + Mathf.Max(0, combo - 1) * Mathf.Max(0f, instance.comboPitchStep));
+        instance.releaseBarPerfectSound.pitch = Mathf.Clamp(instance.perfectBasePitch * multiplier, 0.1f, 3f);
+        Play(instance.releaseBarPerfectSound);
+    }
     public static void playReleaseBarFailed() => Play(instance ? instance.releaseBarFailed : null);
     public static void playDie() => Play(instance ? instance.dieSound : null);
     public static void playNewHighscore() => Play(instance ? instance.newHighscore : null);

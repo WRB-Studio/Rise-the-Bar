@@ -11,6 +11,12 @@ public class GameHandler : MonoBehaviour
     public int Accuracy { get; private set; }
     public int Retries { get; private set; }
     public int PerfectStreak { get; private set; }
+    public int LastComboBonus { get; private set; }
+    public int LastBarPoints { get; private set; }
+
+    [Header("Perfect combo")]
+    [Min(0)] public int comboBonusStep = 50;
+    [Min(0)] public int maximumComboBonus = 250;
 
     public static GameHandler instance;
 
@@ -67,11 +73,17 @@ public class GameHandler : MonoBehaviour
         if (isGameOver)
             return;
 
-        Accuracy = (int)System.Math.Min(int.MaxValue, (long)Accuracy + Mathf.Max(0, points));
-        PerfectStreak = isPerfect && !failed ? PerfectStreak + 1 : 0;
+        PerfectStreak = isPerfect && !failed
+            ? (int)System.Math.Min(int.MaxValue, (long)PerfectStreak + 1)
+            : 0;
+        LastComboBonus = PerfectStreak > 1
+            ? (int)System.Math.Min(Mathf.Max(0, maximumComboBonus), (long)(PerfectStreak - 1) * Mathf.Max(0, comboBonusStep))
+            : 0;
+        LastBarPoints = (int)System.Math.Min(int.MaxValue, (long)Mathf.Max(0, points) + LastComboBonus);
+        Accuracy = (int)System.Math.Min(int.MaxValue, (long)Accuracy + LastBarPoints);
         int requiredPerfects = GUI.instance.perfectsForRetry;
         if (isPerfect && !failed && requiredPerfects > 0 && PerfectStreak % requiredPerfects == 0)
-            Retries++;
+            Retries = (int)System.Math.Min(int.MaxValue, (long)Retries + 1);
 
         if (failed)
         {

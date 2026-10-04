@@ -43,6 +43,7 @@ public class GUI : MonoBehaviour
     public bool isInit = false;
 
     public static GUI instance;
+    public HitFeedbackUI HitFeedback { get; private set; }
 
 
     private void Awake()
@@ -61,6 +62,8 @@ public class GUI : MonoBehaviour
             if (!graphic.GetComponentInParent<Selectable>(true))
                 graphic.raycastTarget = false;
         }
+        HitFeedback = canvas.gameObject.AddComponent<HitFeedbackUI>();
+        HitFeedback.Initialize(txtAccuracy);
         txtAccuracy.text = "0";
         updateCall();
 

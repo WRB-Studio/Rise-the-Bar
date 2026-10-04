@@ -12,6 +12,8 @@ public class GameplayTests
     private bool hadAccuracy;
     private float savedDistance;
     private int savedAccuracy;
+    private bool hadVibration;
+    private int savedVibration;
 
     [UnitySetUp]
     public IEnumerator LoadGame()
@@ -20,6 +22,8 @@ public class GameplayTests
         hadAccuracy = PlayerPrefs.HasKey("accuracy");
         savedDistance = PlayerPrefs.GetFloat("distance");
         savedAccuracy = PlayerPrefs.GetInt("accuracy");
+        hadVibration = PlayerPrefs.HasKey(Haptics.PreferenceKey);
+        savedVibration = PlayerPrefs.GetInt(Haptics.PreferenceKey);
         Time.timeScale = 1f;
         yield return SceneManager.LoadSceneAsync("MainWorld");
         yield return null;
@@ -38,6 +42,10 @@ public class GameplayTests
             PlayerPrefs.SetInt("accuracy", savedAccuracy);
         else
             PlayerPrefs.DeleteKey("accuracy");
+        if (hadVibration)
+            PlayerPrefs.SetInt(Haptics.PreferenceKey, savedVibration);
+        else
+            PlayerPrefs.DeleteKey(Haptics.PreferenceKey);
         PlayerPrefs.Save();
         Time.timeScale = 1f;
         AudioListener.pause = false;
@@ -84,7 +92,122 @@ public class GameplayTests
         game.RecordBar(0, false, true);
         Assert.That(game.PerfectStreak, Is.Zero);
         Assert.That(game.Retries, Is.EqualTo(3));
-        Assert.That(game.Accuracy, Is.EqualTo(700));
+        Assert.That(game.Accuracy, Is.EqualTo(750));
+    }
+
+    [Test]
+    public void PerfectComboAwardsCappedBonusesAndNormalHitsResetIt()
+    {
+        GameHandler game = GameHandler.instance;
+        for (int combo = 1; combo <= 8; combo++)
+        {
+            game.RecordBar(200, true, false);
+            Assert.That(game.PerfectStreak, Is.EqualTo(combo));
+            Assert.That(game.LastComboBonus, Is.EqualTo(Mathf.Min((combo - 1) * 50, 250)));
+        }
+        Assert.That(game.Accuracy, Is.EqualTo(2850));
+        game.RecordBar(100, false, false);
+        Assert.That(game.PerfectStreak, Is.Zero);
+        Assert.That(game.LastComboBonus, Is.Zero);
+        game.RecordBar(200, true, false);
+        Assert.That(game.LastBarPoints, Is.EqualTo(200));
+        Assert.That(game.Accuracy, Is.EqualTo(3150));
+    }
+
+    [Test]
+    public void ComboScoreDoesNotOverflowAndCancelledBarsKeepCombo()
+    {
+        GameHandler game = GameHandler.instance;
+        game.RecordBar(int.MaxValue, true, false);
+        game.RecordBar(200, true, false);
+        Assert.That(game.Accuracy, Is.EqualTo(int.MaxValue));
+        Call(BarRaiser.instance, "CreateNewBar");
+        BarRaiser.instance.CancelInput();
+        Assert.That(game.PerfectStreak, Is.EqualTo(2));
+        game.RecordBar(0, false, true);
+        Assert.That(game.PerfectStreak, Is.Zero);
+        Assert.That(game.LastComboBonus, Is.Zero);
+    }
+
+    [Test]
+    public void PerfectSoundRisesWithComboIsCappedAndResets()
+    {
+        AudioController audio = AudioController.instance;
+        Assert.That(audio.releaseBarSound.clip, Is.Not.Null);
+        Assert.That(audio.releaseBarPerfectSound.clip, Is.Not.EqualTo(audio.releaseBarSound.clip));
+        Assert.That(audio.releaseBarFailed.clip, Is.Not.EqualTo(audio.releaseBarSound.clip));
+        AudioController.playReleaseBarPerfect(1);
+        float basePitch = audio.releaseBarPerfectSound.pitch;
+        AudioController.playReleaseBarPerfect(3);
+        Assert.That(audio.releaseBarPerfectSound.pitch, Is.GreaterThan(basePitch));
+        AudioController.playReleaseBarPerfect(100);
+        Assert.That(audio.releaseBarPerfectSound.pitch, Is.EqualTo(Mathf.Min(3f, basePitch * audio.maximumComboPitchMultiplier)).Within(0.001f));
+        AudioController.playReleaseBarPerfect(1);
+        Assert.That(audio.releaseBarPerfectSound.pitch, Is.EqualTo(basePitch));
+    }
+
+    [UnityTest]
+    public IEnumerator PerfectFeedbackShowsActualBonusAndDoesNotBlockNextBar()
+    {
+        Player.instance.minMaxNormalSpeed = Vector2.zero;
+        Player.instance.minMaxIdleSpeed = Vector2.zero;
+        GameHandler.instance.RecordBar(200, true, false);
+        Assert.That(Call(BarRaiser.instance, "CreateNewBar"), Is.True);
+        Platform mount = PlatformController.instance.FirstPlatform;
+        Platform target = PlatformController.instance.GetNextPlatform(mount);
+        mount.barObject.SetLength(target.GetComponent<Collider2D>().bounds.min.x + BarRaiser.instance.perfectAreaGap
+            + BarRaiser.instance.perfectAreaLength / 2f - mount.barMountPoint.transform.position.x);
+        Call(BarRaiser.instance, "ReleaseBar");
+        HitFeedbackUI feedback = GUI.instance.HitFeedback;
+        Assert.That(GameHandler.instance.Accuracy, Is.EqualTo(450));
+        Assert.That(feedback.PerfectPoints.text, Does.Contain("+250 pts"));
+        Assert.That(feedback.PerfectTitle.gameObject.activeInHierarchy, Is.True);
+        Assert.That(feedback.PerfectTitle.raycastTarget, Is.False);
+        Assert.That(feedback.PerfectTitle.GetComponentInParent<CanvasGroup>().blocksRaycasts, Is.False);
+        Assert.That(Call(BarRaiser.instance, "CreateNewBar"), Is.True);
+        yield return new WaitForSeconds(1.1f);
+        Assert.That(feedback.PerfectTitle.gameObject.activeInHierarchy, Is.False);
+        Assert.That(feedback.ComboText.text, Is.EqualTo("COMBO x2"));
+        Assert.That(feedback.ComboText.gameObject.activeSelf, Is.True);
+        GameHandler.instance.RecordBar(100, false, false);
+        yield return null;
+        Assert.That(feedback.ComboText.gameObject.activeSelf, Is.False);
+        feedback.ShowPerfect(3, 300);
+        yield return new WaitForSeconds(0.6f);
+        feedback.ShowPerfect(4, 350);
+        yield return new WaitForSeconds(0.4f);
+        Assert.That(feedback.PerfectTitle.gameObject.activeInHierarchy, Is.True);
+        Assert.That(feedback.PerfectPoints.text, Does.Contain("+350 pts"));
+        yield return new WaitForSeconds(0.6f);
+        Assert.That(feedback.PerfectTitle.gameObject.activeInHierarchy, Is.False);
+    }
+
+    [UnityTest]
+    public IEnumerator VibrationSettingCanBeClickedAndSurvivesReplay()
+    {
+        PlayerPrefs.DeleteKey(Haptics.PreferenceKey);
+        Assert.That(Haptics.Enabled, Is.False);
+        UnityEngine.UI.Button button = GUI.instance.HitFeedback.VibrationButton;
+        Canvas.ForceUpdateCanvases();
+        var pointer = new PointerEventData(EventSystem.current)
+        {
+            position = RectTransformUtility.WorldToScreenPoint(null,
+                button.GetComponent<RectTransform>().TransformPoint(button.GetComponent<RectTransform>().rect.center)),
+            button = PointerEventData.InputButton.Left
+        };
+        var hits = new System.Collections.Generic.List<RaycastResult>();
+        EventSystem.current.RaycastAll(pointer, hits);
+        Assert.That(hits.Count, Is.GreaterThan(0));
+        GameObject clickTarget = ExecuteEvents.GetEventHandler<IPointerClickHandler>(hits[0].gameObject);
+        Assert.That(clickTarget, Is.EqualTo(button.gameObject));
+        ExecuteEvents.Execute(clickTarget, pointer, ExecuteEvents.pointerClickHandler);
+        Assert.That(Haptics.Enabled, Is.True);
+        yield return SceneManager.LoadSceneAsync("MainWorld");
+        yield return null;
+        Assert.That(Haptics.Enabled, Is.True);
+        Assert.That(GUI.instance.HitFeedback.VibrationButton.GetComponentInChildren<UnityEngine.UI.Text>().text, Is.EqualTo("Vibration: On"));
+        GUI.instance.HitFeedback.VibrationButton.onClick.Invoke();
+        Assert.That(Haptics.Enabled, Is.False);
     }
 
     [Test]
@@ -227,6 +350,8 @@ public class GameplayTests
     public IEnumerator ReplayButtonReceivesPointerAndStartsFreshRun()
     {
         GameHandler previousGame = GameHandler.instance;
+        previousGame.RecordBar(200, true, false);
+        previousGame.RecordBar(200, true, false);
         PlatformController.instance.gameOverDestruction();
         yield return new WaitForSeconds(1.6f);
         UnityEngine.UI.Button button = GUI.instance.btnReplay;
@@ -249,6 +374,8 @@ public class GameplayTests
         Assert.That(GameHandler.instance, Is.Not.SameAs(previousGame));
         Assert.That(GameHandler.instance.isGameOver, Is.False);
         Assert.That(GameHandler.instance.Accuracy, Is.Zero);
+        Assert.That(GameHandler.instance.PerfectStreak, Is.Zero);
+        Assert.That(GameHandler.instance.LastComboBonus, Is.Zero);
         Assert.That(BarRaiser.instance.firstTouch, Is.False);
         Assert.That(Time.timeScale, Is.EqualTo(1f));
     }

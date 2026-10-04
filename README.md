@@ -34,7 +34,9 @@
 2. Open it in Unity Hub with the version recorded in `ProjectSettings/ProjectVersion.txt` (Android Build Support required for mobile builds).
 3. Open a scene in `Assets/Scenes` and press Play.
 
-Hold the left mouse button in the editor or hold one finger on Android to grow a bar. Release to drop it. Interrupted touches and app switches cancel an unfinished bar without spending a retry. Perfect placements award 200 points; two consecutive perfect placements award one retry. Distance measures horizontal progress and freezes when the run ends.
+Hold the left mouse button in the editor or hold one finger on Android to grow a bar. Release to drop it. Interrupted touches and app switches cancel an unfinished bar without spending a retry. Perfect placements award 200 points, plus a combo bonus of 50 points per subsequent perfect placement, capped at 250 bonus points per bar. Normal placements and failed bars reset the combo; cancelled input does not. Two consecutive perfect placements still award one retry. Perfect hits show an animated popup and a sound that rises with the combo. Distance measures horizontal progress and freezes when the run ends.
+
+Optional Android haptic feedback can be enabled with the **Vibration** button before starting or after game over. It is off by default and the preference survives replay and app restarts. Device touch-feedback settings also apply.
 
 ## Validation and Android releases
 

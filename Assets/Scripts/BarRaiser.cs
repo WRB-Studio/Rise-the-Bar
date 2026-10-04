@@ -171,12 +171,28 @@ public class BarRaiser : MonoBehaviour
             hinge.limits = limits;
         }
         curPlatform.barObject.tipOverToTheRight(curPlatform);
+        if (accuracy == 200f)
+            ShowFeedback(perfectionFeedbackPrefab);
+        else if (accuracy <= 0f)
+            ShowFeedback(antiPerfectionFeedbackPrefab);
         if (accuracy <= 0f)
         {
             DisableBar();
             curPlatform = PlatformController.instance.GetPreviousPlatform(curPlatform);
         }
         GameHandler.instance.RecordBar(Mathf.RoundToInt(accuracy), accuracy == 200f, accuracy <= 0f);
+        if (accuracy == 200f)
+        {
+            AudioController.playReleaseBarPerfect(GameHandler.instance.PerfectStreak);
+            Haptics.PlayPerfect();
+            GUI.instance.HitFeedback.ShowPerfect(GameHandler.instance.PerfectStreak, GameHandler.instance.LastBarPoints);
+        }
+        else if (accuracy <= 0f)
+        {
+            AudioController.playReleaseBarFailed();
+        }
+        else
+            AudioController.playReleaseBar();
     }
 
     public void CancelInput()
@@ -253,19 +269,14 @@ public class BarRaiser : MonoBehaviour
         float maximum = minimum + width;
         if (actual < target.GetComponent<Collider2D>().bounds.min.x - pivotX)
         {
-            AudioController.playReleaseBarFailed();
-            ShowFeedback(antiPerfectionFeedbackPrefab);
             return 0f;
         }
 
         if (actual >= minimum && actual <= maximum)
         {
-            AudioController.playReleaseBarPerfect();
-            ShowFeedback(perfectionFeedbackPrefab);
             return 200f;
         }
 
-        AudioController.playReleaseBar();
         float excess = Mathf.Max(0f, actual - maximum);
         return 100f * Mathf.Pow(0.5f, excess / Mathf.Max(0.001f, width + 0.5f));
     }
