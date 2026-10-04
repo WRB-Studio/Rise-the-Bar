@@ -179,7 +179,7 @@ public class HitFeedbackUI : MonoBehaviour
         Vector2 size = perfectRect.sizeDelta * scale;
         RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, gameCamera.WorldToScreenPoint(targetPosition),
             uiCamera, out Vector2 desired);
-        desired.y += 80f + rise;
+        desired.y += 120f + rise;
         desired.x = Mathf.Clamp(desired.x, minimum.x + margin + size.x / 2f, maximum.x - margin - size.x / 2f);
         desired.y = Mathf.Clamp(desired.y, minimum.y + margin, maximum.y - margin - hudClearance - size.y);
         perfectRect.anchoredPosition = desired;
