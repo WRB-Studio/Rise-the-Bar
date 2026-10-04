@@ -38,6 +38,8 @@ Hold the left mouse button in the editor or hold one finger on Android to grow a
 
 Optional Android haptic feedback can be enabled with the **Vibration** button before starting or after game over. It is off by default and the preference survives replay and app restarts. Device touch-feedback settings also apply.
 
+Perfect-hit feedback appears above the target landing area and follows the camera. Its dark background keeps the text readable, and the entire popup stays inside the screen safe area even when the target platform is offscreen.
+
 ## Validation and Android releases
 
 - Run the EditMode and PlayMode suites in **Window > General > Test Runner**.

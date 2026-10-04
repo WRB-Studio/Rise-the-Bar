@@ -185,7 +185,10 @@ public class BarRaiser : MonoBehaviour
         {
             AudioController.playReleaseBarPerfect(GameHandler.instance.PerfectStreak);
             Haptics.PlayPerfect();
-            GUI.instance.HitFeedback.ShowPerfect(GameHandler.instance.PerfectStreak, GameHandler.instance.LastBarPoints);
+            Platform target = PlatformController.instance.GetNextPlatform(curPlatform);
+            TryGetPerfectBand(target, out float startX, out float width);
+            Vector3 hitPosition = new Vector3(startX + width / 2f, target.GetComponent<Collider2D>().bounds.max.y, 0f);
+            GUI.instance.HitFeedback.ShowPerfect(GameHandler.instance.PerfectStreak, GameHandler.instance.LastBarPoints, hitPosition);
         }
         else if (accuracy <= 0f)
         {

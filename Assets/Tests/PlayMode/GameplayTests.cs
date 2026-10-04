@@ -168,18 +168,76 @@ public class GameplayTests
         yield return new WaitForSeconds(1.1f);
         Assert.That(feedback.PerfectTitle.gameObject.activeInHierarchy, Is.False);
         Assert.That(feedback.ComboText.text, Is.EqualTo("COMBO x2"));
-        Assert.That(feedback.ComboText.gameObject.activeSelf, Is.True);
+        Assert.That(feedback.ComboText.gameObject.activeInHierarchy, Is.True);
         GameHandler.instance.RecordBar(100, false, false);
         yield return null;
-        Assert.That(feedback.ComboText.gameObject.activeSelf, Is.False);
-        feedback.ShowPerfect(3, 300);
+        Assert.That(feedback.ComboText.gameObject.activeInHierarchy, Is.False);
+        feedback.ShowPerfect(3, 300, target.transform.position);
         yield return new WaitForSeconds(0.6f);
-        feedback.ShowPerfect(4, 350);
+        feedback.ShowPerfect(4, 350, target.transform.position);
         yield return new WaitForSeconds(0.4f);
         Assert.That(feedback.PerfectTitle.gameObject.activeInHierarchy, Is.True);
         Assert.That(feedback.PerfectPoints.text, Does.Contain("+350 pts"));
         yield return new WaitForSeconds(0.6f);
         Assert.That(feedback.PerfectTitle.gameObject.activeInHierarchy, Is.False);
+    }
+
+    [UnityTest]
+    public IEnumerator PerfectFeedbackStaysVisibleForTargetsOutsideScreenAndFollowsCamera()
+    {
+        GameHandler.instance.enabled = false;
+        Camera camera = Camera.main;
+        HitFeedbackUI feedback = GUI.instance.HitFeedback;
+        RectTransform panel = feedback.PerfectTitle.GetComponentInParent<CanvasGroup>(true).GetComponent<RectTransform>();
+        var corners = new Vector3[4];
+        float depth = camera.WorldToScreenPoint(Vector3.zero).z;
+        Vector3 rightTarget = camera.ViewportToWorldPoint(new Vector3(1.5f, 0.25f, depth));
+        Vector2[] targetViewports = { new Vector2(1.5f, 0.25f), new Vector2(-0.5f, 0.25f), new Vector2(0.8f, 1.5f) };
+        foreach (Vector2 viewport in targetViewports)
+        {
+            feedback.ShowPerfect(6, 450, camera.ViewportToWorldPoint(new Vector3(viewport.x, viewport.y, depth)));
+            yield return new WaitForSeconds(0.15f);
+            panel.GetWorldCorners(corners);
+            foreach (Vector3 corner in corners)
+            {
+                Vector2 screen = RectTransformUtility.WorldToScreenPoint(null, corner);
+                Assert.That(screen.x, Is.InRange(Screen.safeArea.xMin, Screen.safeArea.xMax));
+                Assert.That(screen.y, Is.InRange(Screen.safeArea.yMin, Screen.safeArea.yMax));
+            }
+            feedback.PerfectTitle.rectTransform.GetWorldCorners(corners);
+            foreach (Vector3 corner in corners)
+            {
+                Vector3 local = panel.InverseTransformPoint(corner);
+                Assert.That(local.x, Is.InRange(panel.rect.xMin, panel.rect.xMax));
+                Assert.That(local.y, Is.InRange(panel.rect.yMin, panel.rect.yMax));
+            }
+        }
+        feedback.ShowPerfect(6, 450, rightTarget);
+        yield return null;
+        float clampedX = panel.position.x;
+        camera.transform.position += Vector3.right * camera.orthographicSize * camera.aspect * 1.6f;
+        yield return null;
+        Assert.That(panel.position.x, Is.LessThan(clampedX - 20f));
+    }
+
+    [UnityTest]
+    public IEnumerator PerfectFeedbackAppearsAboveVisibleTargetInsteadOfScreenCenter()
+    {
+        GameHandler.instance.enabled = false;
+        Camera camera = Camera.main;
+        float depth = camera.WorldToScreenPoint(Vector3.zero).z;
+        Vector3 hitPosition = camera.ViewportToWorldPoint(new Vector3(0.75f, 0.3f, depth));
+        HitFeedbackUI feedback = GUI.instance.HitFeedback;
+        feedback.ShowPerfect(3, 300, hitPosition);
+        yield return new WaitForSeconds(0.15f);
+        RectTransform panel = feedback.PerfectTitle.GetComponentInParent<CanvasGroup>().GetComponent<RectTransform>();
+        Vector2 screen = RectTransformUtility.WorldToScreenPoint(null, panel.position);
+        Vector3 targetScreen = camera.WorldToScreenPoint(hitPosition);
+        Assert.That(screen.x, Is.EqualTo(targetScreen.x).Within(2f));
+        Assert.That(screen.y, Is.GreaterThan(targetScreen.y + 10f));
+        Assert.That(feedback.PerfectTitle.color, Is.EqualTo(Color.white));
+        UnityEngine.UI.Image background = panel.GetComponent<UnityEngine.UI.Image>();
+        Assert.That(background.raycastTarget, Is.False);
     }
 
     [UnityTest]
