@@ -15,8 +15,8 @@ public class BarRaiser : MonoBehaviour
     public Vector2 minMaxGrowthSpeed = new Vector2(2f, 6f);
 
     [Header("Perfect Area (on NEXT platform)")]
-    public float perfectAreaLength = 0.3f;
-    public float perfectAreaGap = 0.03f;
+    public float perfectAreaLength = 0.34f;
+    public float perfectAreaGap = 0.01f;
 
     [Header("Debug")]
     public bool testMaxLength;

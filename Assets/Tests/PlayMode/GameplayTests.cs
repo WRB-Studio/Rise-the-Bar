@@ -352,6 +352,35 @@ public class GameplayTests
         Assert.That(bar.GetComponent<Rigidbody2D>().simulated, Is.True);
     }
 
+    [Test]
+    public void ExpandedPerfectZoneMatchesMarkerAndStillRejectsOutsideHits()
+    {
+        Assert.That(Call(BarRaiser.instance, "CreateNewBar"), Is.True);
+        Platform mount = PlatformController.instance.FirstPlatform;
+        Platform target = PlatformController.instance.GetNextPlatform(mount);
+        float targetLeft = target.GetComponent<Collider2D>().bounds.min.x;
+        float pivotX = mount.barMountPoint.transform.position.x;
+        Bar bar = mount.barObject;
+        GameObject marker = (GameObject)Field(BarRaiser.instance, "currentPerfectMarker");
+        Bounds green = marker.GetComponent<SpriteRenderer>().bounds;
+        Assert.That(green.min.x, Is.EqualTo(targetLeft + 0.01f).Within(0.001f));
+        Assert.That(green.max.x, Is.EqualTo(targetLeft + 0.35f).Within(0.001f));
+        Assert.That(green.max.x, Is.LessThan(target.GetComponent<Collider2D>().bounds.max.x));
+
+        foreach (float offset in new[] { 0.02f, 0.33f })
+        {
+            bar.SetLength(targetLeft + offset - pivotX);
+            Assert.That((float)Call(BarRaiser.instance, "CalcAccuracy"), Is.EqualTo(200f));
+        }
+        foreach (float offset in new[] { 0.005f, 0.36f })
+        {
+            bar.SetLength(targetLeft + offset - pivotX);
+            Assert.That((float)Call(BarRaiser.instance, "CalcAccuracy"), Is.InRange(1f, 100f));
+        }
+        bar.SetLength(targetLeft - 0.001f - pivotX);
+        Assert.That((float)Call(BarRaiser.instance, "CalcAccuracy"), Is.Zero);
+    }
+
     [UnityTest]
     public IEnumerator PerfectBridgeCanBeCrossedUsingPhysicsMovement()
     {
@@ -362,7 +391,7 @@ public class GameplayTests
         Platform mount = PlatformController.instance.FirstPlatform;
         Platform target = PlatformController.instance.GetNextPlatform(mount);
         float targetLeft = target.GetComponent<Collider2D>().bounds.min.x;
-        mount.barObject.SetLength(targetLeft + BarRaiser.instance.perfectAreaGap + BarRaiser.instance.perfectAreaLength / 2f - mount.barMountPoint.transform.position.x);
+        mount.barObject.SetLength(targetLeft + BarRaiser.instance.perfectAreaGap + 0.003f - mount.barMountPoint.transform.position.x);
         Call(BarRaiser.instance, "ReleaseBar");
         yield return new WaitForSeconds(6f);
         Assert.That(GameHandler.instance.isGameOver, Is.False);
@@ -378,8 +407,9 @@ public class GameplayTests
         Bar bridge = PlatformController.instance.FirstPlatform.barObject;
         Platform targetPlatform = PlatformController.instance.GetNextPlatform(PlatformController.instance.FirstPlatform);
         float targetLeft = targetPlatform.GetComponent<Collider2D>().bounds.min.x;
-        bridge.SetLength(targetLeft + 0.01f - PlatformController.instance.FirstPlatform.barMountPoint.transform.position.x);
+        bridge.SetLength(targetLeft + BarRaiser.instance.perfectAreaGap / 2f - PlatformController.instance.FirstPlatform.barMountPoint.transform.position.x);
         Call(BarRaiser.instance, "ReleaseBar");
+        Assert.That(GameHandler.instance.PerfectStreak, Is.Zero);
         float deadline = Time.time + 6f;
         while (!bridge.getHasFallen() && Time.time < deadline)
             yield return null;

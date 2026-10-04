@@ -56359,8 +56359,8 @@ MonoBehaviour:
   antiPerfectionFeedbackPrefab: {fileID: 7707814270382583139, guid: ce727897b6bb0ea47a2b792c39a9792e, type: 3}
   barPrefab: {fileID: 1448509125956203101, guid: cd2370db62c189443920334afa976cb2, type: 3}
   minMaxGrowthSpeed: {x: 1, y: 6}
-  perfectAreaLength: 0.25
-  perfectAreaGap: 0.05
+  perfectAreaLength: 0.34
+  perfectAreaGap: 0.01
   testMaxLength: 0
   testMaxLengthPercentage: 0.5
   showGrowFeedback: 0

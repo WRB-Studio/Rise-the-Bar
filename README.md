@@ -40,6 +40,8 @@ Optional Android haptic feedback can be enabled with the **Vibration** button be
 
 Perfect-hit feedback appears above the target landing area and follows the camera. Its dark background keeps the text readable, and the entire popup stays inside the screen safe area even when the target platform is offscreen.
 
+The green perfect zone starts 0.01 world units inside the platform's front edge and extends 0.34 units along the platform. The marker and perfect-hit scoring use the same zone; the increasing bar growth speed still tightens the timing window as the run progresses.
+
 ## Validation and Android releases
 
 - Run the EditMode and PlayMode suites in **Window > General > Test Runner**.
