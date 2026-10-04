@@ -163,6 +163,13 @@ public class BarRaiser : MonoBehaviour
         barIsRaising = false;
         float accuracy = CalcAccuracy();
         RestoreGrowFeedback();
+        if (accuracy > 0f)
+        {
+            HingeJoint2D hinge = curPlatform.barObject.GetComponent<HingeJoint2D>();
+            JointAngleLimits2D limits = hinge.limits;
+            limits.max = 90f;
+            hinge.limits = limits;
+        }
         curPlatform.barObject.tipOverToTheRight(curPlatform);
         if (accuracy <= 0f)
         {
@@ -253,10 +260,6 @@ public class BarRaiser : MonoBehaviour
 
         if (actual >= minimum && actual <= maximum)
         {
-            HingeJoint2D hinge = curPlatform.barObject.GetComponent<HingeJoint2D>();
-            JointAngleLimits2D limits = hinge.limits;
-            limits.max = 90f;
-            hinge.limits = limits;
             AudioController.playReleaseBarPerfect();
             ShowFeedback(perfectionFeedbackPrefab);
             return 200f;

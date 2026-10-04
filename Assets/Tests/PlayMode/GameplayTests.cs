@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.EventSystems;
 
 public class GameplayTests
 {
@@ -126,7 +127,7 @@ public class GameplayTests
         Canvas canvas = GUI.instance.panelTop.GetComponentInParent<Canvas>();
         foreach (UnityEngine.UI.Graphic graphic in canvas.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
         {
-            if (!graphic.GetComponentInParent<UnityEngine.UI.Selectable>())
+            if (!graphic.GetComponentInParent<UnityEngine.UI.Selectable>(true))
                 Assert.That(graphic.raycastTarget, Is.False, graphic.name);
         }
     }
@@ -185,6 +186,71 @@ public class GameplayTests
         yield return new WaitForSeconds(6f);
         Assert.That(GameHandler.instance.isGameOver, Is.False);
         Assert.That(Player.instance.GetComponent<Rigidbody2D>().position.x, Is.GreaterThan(targetLeft));
+    }
+
+    [UnityTest]
+    public IEnumerator LandedBridgeStaysInPlaceWhenNextBarIsRaised()
+    {
+        Player.instance.minMaxNormalSpeed = Vector2.zero;
+        Player.instance.minMaxIdleSpeed = Vector2.zero;
+        Assert.That(Call(BarRaiser.instance, "CreateNewBar"), Is.True);
+        Bar bridge = PlatformController.instance.FirstPlatform.barObject;
+        Platform targetPlatform = PlatformController.instance.GetNextPlatform(PlatformController.instance.FirstPlatform);
+        float targetLeft = targetPlatform.GetComponent<Collider2D>().bounds.min.x;
+        bridge.SetLength(targetLeft + 0.01f - PlatformController.instance.FirstPlatform.barMountPoint.transform.position.x);
+        Call(BarRaiser.instance, "ReleaseBar");
+        float deadline = Time.time + 6f;
+        while (!bridge.getHasFallen() && Time.time < deadline)
+            yield return null;
+        Assert.That(bridge.getHasFallen(), Is.True);
+        Assert.That(bridge.GetComponent<Collider2D>().bounds.center.y,
+            Is.GreaterThanOrEqualTo(PlatformController.instance.FirstPlatform.GetComponent<Collider2D>().bounds.max.y - 0.1f));
+        Vector2 landedPosition = bridge.GetComponent<Rigidbody2D>().position;
+        float landedAngle = bridge.GetComponent<Rigidbody2D>().rotation;
+
+        Assert.That(Call(BarRaiser.instance, "CreateNewBar"), Is.True);
+        Player.instance.minMaxNormalSpeed = new Vector2(2f, 2f);
+        GameHandler.instance.maxDifficultyAfterSec = float.MaxValue;
+        for (int i = 0; i < 30; i++)
+        {
+            Call(BarRaiser.instance, "GrowBar");
+            yield return null;
+        }
+        yield return new WaitForSeconds(4f);
+        Assert.That(GameHandler.instance.isGameOver, Is.False);
+        Assert.That(Player.instance.Position.x, Is.GreaterThan(targetLeft));
+        Assert.That(Vector2.Distance(bridge.GetComponent<Rigidbody2D>().position, landedPosition), Is.LessThan(0.03f));
+        Assert.That(Mathf.Abs(Mathf.DeltaAngle(landedAngle, bridge.GetComponent<Rigidbody2D>().rotation)), Is.LessThan(1f));
+    }
+
+    [UnityTest]
+    public IEnumerator ReplayButtonReceivesPointerAndStartsFreshRun()
+    {
+        GameHandler previousGame = GameHandler.instance;
+        PlatformController.instance.gameOverDestruction();
+        yield return new WaitForSeconds(1.6f);
+        UnityEngine.UI.Button button = GUI.instance.btnReplay;
+        button.gameObject.SetActive(true);
+        yield return null;
+        Canvas.ForceUpdateCanvases();
+        PointerEventData pointer = new PointerEventData(EventSystem.current)
+        {
+            position = RectTransformUtility.WorldToScreenPoint(null, button.GetComponent<RectTransform>().position),
+            button = PointerEventData.InputButton.Left
+        };
+        var hits = new System.Collections.Generic.List<RaycastResult>();
+        EventSystem.current.RaycastAll(pointer, hits);
+        Assert.That(hits.Count, Is.GreaterThan(0), "Replay button cannot be hit by a pointer.");
+        GameObject target = ExecuteEvents.GetEventHandler<IPointerClickHandler>(hits[0].gameObject);
+        Assert.That(target, Is.EqualTo(button.gameObject));
+        ExecuteEvents.Execute(target, pointer, ExecuteEvents.pointerClickHandler);
+        yield return null;
+        yield return null;
+        Assert.That(GameHandler.instance, Is.Not.SameAs(previousGame));
+        Assert.That(GameHandler.instance.isGameOver, Is.False);
+        Assert.That(GameHandler.instance.Accuracy, Is.Zero);
+        Assert.That(BarRaiser.instance.firstTouch, Is.False);
+        Assert.That(Time.timeScale, Is.EqualTo(1f));
     }
 
     [UnityTest]

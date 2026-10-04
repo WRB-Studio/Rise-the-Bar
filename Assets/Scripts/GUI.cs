@@ -58,7 +58,7 @@ public class GUI : MonoBehaviour
         Canvas canvas = panelTop.GetComponentInParent<Canvas>();
         foreach (Graphic graphic in canvas.GetComponentsInChildren<Graphic>(true))
         {
-            if (!graphic.GetComponentInParent<Selectable>())
+            if (!graphic.GetComponentInParent<Selectable>(true))
                 graphic.raycastTarget = false;
         }
         txtAccuracy.text = "0";
