@@ -1,5 +1,5 @@
-﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 public class BarRaiser : MonoBehaviour
 {
@@ -12,326 +12,294 @@ public class BarRaiser : MonoBehaviour
     public GameObject barPrefab;
 
     [Header("Growth")]
-    public Vector2 minMaxGrowthSpeed = new(2f, 6f);
+    public Vector2 minMaxGrowthSpeed = new Vector2(2f, 6f);
 
     [Header("Perfect Area (on NEXT platform)")]
     public float perfectAreaLength = 0.3f;
     public float perfectAreaGap = 0.03f;
 
     [Header("Debug")]
-    public bool testMaxLength = false;
+    public bool testMaxLength;
     [Range(0f, 1f)] public float testMaxLengthPercentage = 0.5f;
 
     [Header("Optional")]
-    public bool showGrowFeedback = false;
+    public bool showGrowFeedback;
     public GameObject tutorial;
 
-    [HideInInspector] public bool firstTouch, barRaiseFailed, isInit;
+    [HideInInspector] public bool firstTouch, isInit;
+    private float maxHeight;
+    private Platform curPlatform;
+    private Transform curBarFeedback;
+    private GameObject currentPerfectMarker;
+    private bool barIsRaising;
+    private int activeFingerId = -1;
 
-    float growthSpeed, maxHeight;
-
-    Platform curPlatform;                 // Plattform, auf der der aktuelle Bar hängt
-    Transform curBarFeedback;             // detached feedback obj
-    GameObject currentPerfectMarker;
-
-    bool barIsRaising;
-    bool canGrow;                         // <<< FIX: nur wenn true darf Grow passieren
-
-    void Awake() => instance = this;
+    private void Awake() => instance = this;
     public void init() => isInit = true;
 
     public void updateCall()
     {
-        if (GameHandler.instance.isGameOver || barRaiseFailed || Input.touchCount == 0) return;
+        if (!isInit || GameHandler.instance.isGameOver)
+            return;
 
-        firstTouch = true;
-        if (tutorial) tutorial.SetActive(false);
-
-        switch (Input.GetTouch(0).phase)
+        for (int i = 0; i < Input.touchCount; i++)
         {
-            case TouchPhase.Began:
-                if (!barIsRaising) CreateNewBar();
-                break;
+            Touch touch = Input.GetTouch(i);
+            if (activeFingerId == -1 && touch.phase == TouchPhase.Began)
+            {
+                if (EventSystem.current && EventSystem.current.IsPointerOverGameObject(touch.fingerId))
+                    continue;
+                if (CreateNewBar())
+                    activeFingerId = touch.fingerId;
+            }
 
-            case TouchPhase.Stationary:
-            case TouchPhase.Moved:
-                GrowBar();
-                break;
+            if (touch.fingerId != activeFingerId)
+                continue;
 
-            case TouchPhase.Ended:
-                ReleaseBar();
-                break;
+            switch (touch.phase)
+            {
+                case TouchPhase.Stationary:
+                case TouchPhase.Moved:
+                    GrowBar();
+                    break;
+                case TouchPhase.Ended:
+                    ReleaseBar();
+                    activeFingerId = -1;
+                    break;
+                case TouchPhase.Canceled:
+                    CancelInput();
+                    break;
+            }
+            return;
         }
+
+        if (activeFingerId >= 0)
+            CancelInput();
+
+#if UNITY_EDITOR || UNITY_STANDALONE
+        if (Input.touchCount > 0)
+            return;
+        if (Input.GetMouseButtonDown(0) && activeFingerId == -1)
+        {
+            if (EventSystem.current && EventSystem.current.IsPointerOverGameObject())
+                return;
+            if (CreateNewBar())
+                activeFingerId = -2;
+        }
+        else if (activeFingerId == -2 && Input.GetMouseButtonUp(0))
+        {
+            ReleaseBar();
+            activeFingerId = -1;
+        }
+        else if (activeFingerId == -2 && Input.GetMouseButton(0))
+        {
+            GrowBar();
+        }
+#endif
     }
 
-    void CreateNewBar()
+    private bool CreateNewBar()
     {
-        if (barIsRaising) return;
+        if (barIsRaising)
+            return false;
 
-        Platform mount = curPlatform
-            ? TryGetNextPlatform(curPlatform)
-            : PlatformController.instance.getPlatforms()[0].GetComponent<Platform>();
+        PlatformController platforms = PlatformController.instance;
+        Platform mount = curPlatform ? platforms.GetNextPlatform(curPlatform) : platforms.FirstPlatform;
+        if (!mount || mount.barObject || !CameraController.isInsideCameraView(mount.gameObject))
+            return false;
 
-        if (!mount || mount.barObject) return;
-        if (!CameraController.isInsideCameraView(mount.gameObject)) return;
+        Platform target = platforms.GetNextPlatform(mount);
+        if (!target)
+            return false;
 
-        Platform target = TryGetNextPlatform(mount);
-        if (!target) return;
-
-        InstantiateBar(mount);
-
+        curPlatform = mount;
+        Transform bar = Instantiate(barPrefab).transform;
+        Vector2 pivot = mount.barMountPoint.transform.position;
+        bar.position = new Vector2(pivot.x - bar.localScale.x / 2f, pivot.y + bar.localScale.y / 2f);
+        bar.SetParent(mount.barMountPoint.transform, true);
+        mount.barObject = bar.GetComponent<Bar>();
         barIsRaising = true;
-        canGrow = true; // <<< FIX: ab jetzt darf wachsen
+        firstTouch = true;
+        if (tutorial)
+            tutorial.SetActive(false);
 
-        SetupAfterBarCreated(target);
-    }
-
-    void SetupAfterBarCreated(Platform target)
-    {
         CreatePerfectMarker(target);
         SetMaxHeight(target);
-
-        curBarFeedback = curPlatform.barObject.transform.GetChild(0);
-        curBarFeedback.parent = null;
-    }
-
-    void InstantiateBar(Platform platform)
-    {
-        curPlatform = platform;
-
-        Vector2 pos = platform.barMountPoint.transform.position;
-        var bar = Instantiate(barPrefab).transform;
-
-        bar.position = new Vector2(
-            pos.x - bar.localScale.x / 2f,
-            pos.y + bar.localScale.y / 2f
-        );
-
-        bar.SetParent(platform.barMountPoint.transform, true);
-        platform.barObject = bar.GetComponent<Bar>();
-    }
-
-    void GrowBar()
-    {
-        if (!canGrow) return;                 // <<< FIX
-        if (!curPlatform?.barObject) return;
-
-        growthSpeed = Mathf.Lerp(minMaxGrowthSpeed.x, minMaxGrowthSpeed.y, GameHandler.instance.currentDifficulty);
-
-        var t = curPlatform.barObject.transform;
-        Vector2 s = t.localScale;
-
-        float newH = s.y + growthSpeed * Time.deltaTime;
-        if (newH >= maxHeight) return;
-
-        float delta = newH - s.y;
-        t.localScale = new Vector2(s.x, newH);
-        t.position += new Vector3(0f, delta / 2f, 0f);
-
-        if (showGrowFeedback)
+        if (bar.childCount > 0)
         {
-            float top = t.GetComponent<Collider2D>().bounds.max.y;
-            curBarFeedback.position = new Vector2(t.position.x, top);
+            curBarFeedback = bar.GetChild(0);
+            curBarFeedback.SetParent(null, true);
+            curBarFeedback.gameObject.SetActive(showGrowFeedback);
+            UpdateGrowFeedback();
         }
-    }
-
-    void ReleaseBar()
-    {
-        if (!canGrow) return;                 // <<< FIX: doppelte Ended / Race safe
-        canGrow = false;                      // <<< FIX: sofort sperren
-
-        if (!curPlatform?.barObject) { barIsRaising = false; return; }
-
-        curBarFeedback.SetParent(curPlatform.barObject.transform, true);
-        curBarFeedback.gameObject.SetActive(false);
-
-        barIsRaising = false;
-
-        float accuracy = CalcAccuracy();
-        GUI.instance.addAccuracy(Mathf.RoundToInt(accuracy));
-
-        curPlatform.barObject.tipOverToTheRight(curPlatform);
-
-        if (accuracy <= 0f)
-        {
-            DisableBar();
-            curPlatform = IsFirstPlatform(curPlatform) ? null : GetPrevPlatform(curPlatform);
-        }
-    }
-
-    // ---------- PERFECT: single source of truth ----------
-    bool TryGetPerfectBand(Platform target, out float startX, out float width)
-    {
-        startX = 0f; width = 0f;
-        if (!target) return false;
-
-        var col = target.GetComponent<Collider2D>();
-        if (!col) return false;
-
-        float left = col.bounds.min.x;
-        float right = col.bounds.max.x;
-
-        startX = Mathf.Min(left + perfectAreaGap, right - 0.001f);
-
-        float maxW = Mathf.Max(0.001f, right - startX);
-        width = Mathf.Min(Mathf.Max(0.001f, perfectAreaLength), maxW);
-
         return true;
     }
 
-    void CreatePerfectMarker(Platform target)
+    private void GrowBar()
     {
-        if (currentPerfectMarker) Destroy(currentPerfectMarker);
-        if (!TryGetPerfectBand(target, out float startX, out float width)) return;
+        if (!barIsRaising || !curPlatform || !curPlatform.barObject)
+            return;
 
-        float centerX = startX + width * 0.5f;
-        float y = target.transform.position.y;
+        float growthSpeed = Mathf.Lerp(minMaxGrowthSpeed.x, minMaxGrowthSpeed.y, GameHandler.instance.currentDifficulty);
+        Bar bar = curPlatform.barObject;
+        bar.SetLength(Mathf.Min(bar.Length + growthSpeed * Time.deltaTime, maxHeight));
+        UpdateGrowFeedback();
+    }
 
-        Vector3 prefabScale = perfectPosMarkerPrefab.transform.localScale;
+    private void UpdateGrowFeedback()
+    {
+        if (curBarFeedback && curPlatform && curPlatform.barObject)
+        {
+            Transform bar = curPlatform.barObject.transform;
+            curBarFeedback.position = new Vector2(bar.position.x, bar.position.y + curPlatform.barObject.Length / 2f);
+        }
+    }
+
+    private void ReleaseBar()
+    {
+        if (!barIsRaising || !curPlatform || !curPlatform.barObject)
+            return;
+
+        barIsRaising = false;
+        float accuracy = CalcAccuracy();
+        RestoreGrowFeedback();
+        curPlatform.barObject.tipOverToTheRight(curPlatform);
+        if (accuracy <= 0f)
+        {
+            DisableBar();
+            curPlatform = PlatformController.instance.GetPreviousPlatform(curPlatform);
+        }
+        GameHandler.instance.RecordBar(Mathf.RoundToInt(accuracy), accuracy == 200f, accuracy <= 0f);
+    }
+
+    public void CancelInput()
+    {
+        activeFingerId = -1;
+        if (!barIsRaising)
+            return;
+
+        barIsRaising = false;
+        RestoreGrowFeedback();
+        if (curPlatform)
+        {
+            if (curPlatform.barObject)
+            {
+                Destroy(curPlatform.barObject.gameObject);
+                curPlatform.barObject = null;
+            }
+            curPlatform = PlatformController.instance.GetPreviousPlatform(curPlatform);
+        }
+        if (currentPerfectMarker)
+            Destroy(currentPerfectMarker);
+    }
+
+    private void RestoreGrowFeedback()
+    {
+        if (!curBarFeedback)
+            return;
+        if (curPlatform && curPlatform.barObject)
+        {
+            curBarFeedback.SetParent(curPlatform.barObject.transform, true);
+            curBarFeedback.gameObject.SetActive(false);
+        }
+        else
+            Destroy(curBarFeedback.gameObject);
+        curBarFeedback = null;
+    }
+
+    private bool TryGetPerfectBand(Platform target, out float startX, out float width)
+    {
+        startX = width = 0f;
+        if (!target)
+            return false;
+
+        Bounds bounds = target.GetComponent<Collider2D>().bounds;
+        startX = Mathf.Min(bounds.min.x + Mathf.Max(0f, perfectAreaGap), bounds.max.x - 0.001f);
+        width = Mathf.Min(Mathf.Max(0.001f, perfectAreaLength), Mathf.Max(0.001f, bounds.max.x - startX));
+        return true;
+    }
+
+    private void CreatePerfectMarker(Platform target)
+    {
+        if (currentPerfectMarker)
+            Destroy(currentPerfectMarker);
+        if (!perfectPosMarkerPrefab || !TryGetPerfectBand(target, out float startX, out float width))
+            return;
 
         currentPerfectMarker = Instantiate(perfectPosMarkerPrefab);
-        currentPerfectMarker.transform.SetParent(target.transform, false);
-
-        Vector3 worldPos = new(centerX, y, 0f);
-        currentPerfectMarker.transform.localPosition = target.transform.InverseTransformPoint(worldPos);
-
-        float px = Mathf.Max(0.0001f, target.transform.lossyScale.x);
-        float py = Mathf.Max(0.0001f, target.transform.lossyScale.y);
-
-        Vector3 s = currentPerfectMarker.transform.localScale;
-        s.x = width / px;
-        s.y = prefabScale.y / py;
-        currentPerfectMarker.transform.localScale = s;
+        currentPerfectMarker.transform.position = new Vector3(startX + width / 2f, target.transform.position.y, 0f);
+        Vector3 scale = perfectPosMarkerPrefab.transform.localScale;
+        scale.x = width;
+        currentPerfectMarker.transform.localScale = scale;
+        currentPerfectMarker.transform.SetParent(target.transform, true);
     }
 
-    void GetPerfectRange(out float min, out float max)
+    private float CalcAccuracy()
     {
-        min = max = 0f;
+        Platform target = PlatformController.instance.GetNextPlatform(curPlatform);
+        if (!TryGetPerfectBand(target, out float startX, out float width))
+            return 0f;
 
-        Platform mount = curPlatform;
-        Platform target = TryGetNextPlatform(mount);
-        if (!mount || !target) return;
-
-        float mountRight = mount.GetComponent<Collider2D>().bounds.max.x;
-        float targetLeft = target.GetComponent<Collider2D>().bounds.min.x;
-
-        float gap = Mathf.Abs(targetLeft - mountRight);
-
-        float startLen = gap + perfectAreaGap;
-        float endLen = startLen;
-
-        if (TryGetPerfectBand(target, out _, out float bandW))
-            endLen = startLen + bandW;
-
-        float targetRight = target.GetComponent<Collider2D>().bounds.max.x;
-        float maxAllowed = Mathf.Max(0.001f, targetRight - mountRight);
-
-        min = startLen;
-        max = Mathf.Min(endLen, maxAllowed);
-    }
-
-    float CalcAccuracy()
-    {
-        float actual = curPlatform.barObject.transform.localScale.y;
-        GetPerfectRange(out float min, out float max);
-
-        if (actual < min)
+        float pivotX = curPlatform.barMountPoint.transform.position.x;
+        float actual = curPlatform.barObject.Length;
+        float minimum = startX - pivotX;
+        float maximum = minimum + width;
+        if (actual < target.GetComponent<Collider2D>().bounds.min.x - pivotX)
         {
             AudioController.playReleaseBarFailed();
-            Destroy(Instantiate(antiPerfectionFeedbackPrefab, curBarFeedback.position, Quaternion.identity), 1f);
-
-            GUI.instance.addPerfectBarAttempt(false);
-
-            if (GUI.instance.retries <= 0)
-            {
-                barRaiseFailed = true;
-                PlatformController.instance.gameOverDestruction();
-            }
-
+            ShowFeedback(antiPerfectionFeedbackPrefab);
             return 0f;
         }
 
-        if (actual <= max)
+        if (actual >= minimum && actual <= maximum)
         {
-            var hinge = curPlatform.barObject.GetComponent<HingeJoint2D>();
-            var limits = hinge.limits;
-            limits.max = 90;
+            HingeJoint2D hinge = curPlatform.barObject.GetComponent<HingeJoint2D>();
+            JointAngleLimits2D limits = hinge.limits;
+            limits.max = 90f;
             hinge.limits = limits;
-
             AudioController.playReleaseBarPerfect();
-            Destroy(Instantiate(perfectionFeedbackPrefab, curBarFeedback.position, Quaternion.identity), 1f);
-
-            GUI.instance.addPerfectBarAttempt(true);
+            ShowFeedback(perfectionFeedbackPrefab);
             return 200f;
         }
 
         AudioController.playReleaseBar();
-
-        float excess = actual - max;
-        float scale = Mathf.Max(0.001f, (max - min) + 0.5f);
-
-        return Mathf.Max(100f * Mathf.Pow(0.5f, excess / scale), 0f);
+        float excess = Mathf.Max(0f, actual - maximum);
+        return 100f * Mathf.Pow(0.5f, excess / Mathf.Max(0.001f, width + 0.5f));
     }
 
-    void DisableBar()
+    private void ShowFeedback(GameObject prefab)
     {
-        var hinge = curPlatform.barObject.GetComponent<HingeJoint2D>();
-        hinge.enabled = false;
-        curPlatform.barObject.GetComponent<Collider2D>().enabled = false;
+        if (prefab)
+        {
+            Vector3 position = curBarFeedback ? curBarFeedback.position : curPlatform.barObject.transform.position;
+            Destroy(Instantiate(prefab, position, Quaternion.identity), 1f);
+        }
+    }
 
-        Destroy(curPlatform.barObject, 5f);
+    private void DisableBar()
+    {
+        Bar bar = curPlatform.barObject;
+        bar.GetComponent<HingeJoint2D>().enabled = false;
+        bar.GetComponent<Collider2D>().enabled = false;
+        Destroy(bar.gameObject, 5f);
         curPlatform.barObject = null;
     }
 
-    void SetMaxHeight(Platform target)
+    private void SetMaxHeight(Platform target)
     {
-        Platform mount = curPlatform;
-        if (!mount || !target) { maxHeight = 0f; return; }
-
-        float mountRight = mount.GetComponent<Collider2D>().bounds.max.x;
-        float targetLeft = target.GetComponent<Collider2D>().bounds.min.x;
-        float gap = Mathf.Abs(targetLeft - mountRight);
-
-        float targetWidth = target.GetComponent<Collider2D>().bounds.size.x;
-
-        float perfectMin = gap + perfectAreaGap;
-        float maxLen = gap + targetWidth * 0.75f;
-
-        if (testMaxLength)
-        {
-            Player.instance.minMaxIdleSpeed = Vector2.zero;
-            Player.instance.minMaxNormalSpeed = Vector2.zero;
-            maxHeight = perfectMin + ((maxLen - perfectMin) * testMaxLengthPercentage);
-        }
-        else
-        {
-            maxHeight = maxLen;
-        }
+        Bounds bounds = target.GetComponent<Collider2D>().bounds;
+        float gap = bounds.min.x - curPlatform.barMountPoint.transform.position.x;
+        float maxLength = gap + bounds.size.x * 0.75f;
+        maxHeight = testMaxLength
+            ? Mathf.Lerp(gap + perfectAreaGap, maxLength, testMaxLengthPercentage)
+            : maxLength;
     }
 
-    // ---------- platform nav ----------
-    Platform TryGetNextPlatform(Platform current)
+    private void OnDestroy()
     {
-        if (!current) return null;
-
-        var platforms = PlatformController.instance.getPlatforms();
-        int i = platforms.IndexOf(current.gameObject);
-
-        return (i >= 0 && i + 1 < platforms.Count)
-            ? platforms[i + 1].GetComponent<Platform>()
-            : null;
-    }
-
-    Platform GetPrevPlatform(Platform current)
-    {
-        var platforms = PlatformController.instance.getPlatforms();
-        int i = platforms.IndexOf(current.gameObject);
-        return i > 0 ? platforms[i - 1].GetComponent<Platform>() : null;
-    }
-
-    bool IsFirstPlatform(Platform current)
-    {
-        var platforms = PlatformController.instance.getPlatforms();
-        return platforms.IndexOf(current.gameObject) == 0;
+        if (curBarFeedback)
+            Destroy(curBarFeedback.gameObject);
+        if (instance == this)
+            instance = null;
     }
 }

@@ -1,0 +1,6 @@
+{
+    "name": "RiseTheBar.EditModeTests",
+    "references": ["RiseTheBar.Runtime"],
+    "includePlatforms": ["Editor"],
+    "optionalUnityReferences": ["TestAssemblies"]
+}

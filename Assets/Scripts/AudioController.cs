@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class AudioController : MonoBehaviour
@@ -25,86 +24,91 @@ public class AudioController : MonoBehaviour
     public float countingSoundDelay;
 
     public static AudioController instance;
+    private Coroutine musicRoutine;
+    private Coroutine countingRoutine;
+    private AudioSource currentMusic;
 
-    private void Awake()
-    {
-        instance = this;
-    }
-
-    void Start()
-    {
-        playIngameMusic();
-    }
+    private void Awake() => instance = this;
+    private void Start() => playIngameMusic();
 
     public static void playIngameMusic()
     {
-        instance.gameOverMusic.Stop();
-
-        instance.ingameMusic.Play();
-        instance.StartCoroutine(instance.ChangePitchOverTime(instance.ingameMusic, instance.ingamePitchRange, instance.ingamePitchDuration));
+        if (instance)
+            instance.StartMusic(instance.ingameMusic, instance.ingamePitchRange, instance.ingamePitchDuration);
     }
 
     public static void playGameOverMusic()
     {
-        instance.StartCoroutine(instance.ChangePitchOverTime(instance.gameOverMusic, instance.gameOverPitchRange, instance.gameOverPitchDuration));
+        if (instance)
+            instance.StartMusic(instance.gameOverMusic, instance.gameOverPitchRange, instance.gameOverPitchDuration);
     }
 
-    public IEnumerator ChangePitchOverTime(AudioSource audioSource, Vector2 pitchRange, float duration)
+    private void StartMusic(AudioSource source, Vector2 pitchRange, float duration)
     {
-        float time = 0;
-        while (time < duration)
+        if (!source)
+            return;
+        if (musicRoutine != null)
+            StopCoroutine(musicRoutine);
+        if (currentMusic && currentMusic != source)
+            currentMusic.Stop();
+        currentMusic = source;
+        source.pitch = pitchRange.x;
+        if (!source.isPlaying)
+            source.Play();
+        musicRoutine = StartCoroutine(ChangePitchOverTime(source, pitchRange, duration));
+    }
+
+    public IEnumerator ChangePitchOverTime(AudioSource source, Vector2 pitchRange, float duration)
+    {
+        float elapsed = 0f;
+        while (source && elapsed < duration)
         {
-            audioSource.pitch = Mathf.Lerp(pitchRange.x, pitchRange.y, time / duration);
-            time += Time.deltaTime;
+            source.pitch = Mathf.Lerp(pitchRange.x, pitchRange.y, elapsed / duration);
+            elapsed += Time.deltaTime;
             yield return null;
         }
-        audioSource.pitch = pitchRange.y; // Stelle sicher, dass der Ziel-Pitch am Ende erreicht wird
+        if (source)
+            source.pitch = pitchRange.y;
     }
 
-    public static void playJump()
+    private static void Play(AudioSource source)
     {
-        instance.jumpSound.Play();
+        if (source)
+            source.Play();
     }
 
-    public static void playReleaseBar()
-    {
-        instance.releaseBarSound.Play();
-    }
-
-    public static void playReleaseBarPerfect()
-    {
-        instance.releaseBarPerfectSound.Play();
-    }
-
-    public static void playReleaseBarFailed()
-    {
-        instance.releaseBarFailed.Play();
-    }
-
-    public static void playDie()
-    {
-        instance.dieSound.Play();
-    }
-
-    public static void playNewHighscore()
-    {
-        instance.newHighscore.Play();
-    }
+    public static void playJump() => Play(instance ? instance.jumpSound : null);
+    public static void playReleaseBar() => Play(instance ? instance.releaseBarSound : null);
+    public static void playReleaseBarPerfect() => Play(instance ? instance.releaseBarPerfectSound : null);
+    public static void playReleaseBarFailed() => Play(instance ? instance.releaseBarFailed : null);
+    public static void playDie() => Play(instance ? instance.dieSound : null);
+    public static void playNewHighscore() => Play(instance ? instance.newHighscore : null);
 
     public static void playCounting(float duration)
     {
-        instance.StartCoroutine(instance.playCountingRoutine(duration));
+        if (!instance || !instance.countingSound || duration <= 0f)
+            return;
+        if (instance.countingRoutine != null)
+            instance.StopCoroutine(instance.countingRoutine);
+        instance.countingRoutine = instance.StartCoroutine(instance.PlayCountingRoutine(duration));
     }
 
-    private IEnumerator playCountingRoutine(float duration)
+    private IEnumerator PlayCountingRoutine(float duration)
     {
-        yield return null;
-
-        while (duration > 0)
+        float interval = Mathf.Max(0.01f, countingSoundDelay);
+        WaitForSeconds delay = new WaitForSeconds(interval);
+        while (duration > 0f)
         {
-            instance.countingSound.Play();
-            yield return new WaitForSeconds(countingSoundDelay);
-            duration -= countingSoundDelay; // Reduziere duration um die Verzögerung nach jedem Durchgang
+            countingSound.Play();
+            yield return delay;
+            duration -= interval;
         }
+        countingRoutine = null;
+    }
+
+    private void OnDestroy()
+    {
+        if (instance == this)
+            instance = null;
     }
 }

@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -10,130 +9,116 @@ public class StarsController : MonoBehaviour
     public Vector2 minMaxX;
     public Vector2 minMaxY;
     public Vector2 minMaxScale;
-    public float toleranceRadius = 1.0f; // Der Toleranzradius um bereits bestehende Objekte
+    public float toleranceRadius = 1f;
 
-    private bool starterStarsIsInit = false;
+    private readonly List<GameObject> spawnedStars = new List<GameObject>();
+    private Camera mainCamera;
+    private int initialAttempts;
+    private const int MaxPositionAttempts = 20;
+    public Color CurrentColor { get; private set; }
+    private readonly List<SpriteRenderer> starRenderers = new List<SpriteRenderer>();
+    private bool renderersInitialized;
 
-    private List<GameObject> spawnedStars = new List<GameObject>();
-
-    void Start()
+    private void Awake()
     {
-        StartCoroutine(startSpawnStarsRoutine());
+        CurrentColor = objectPrefab ? objectPrefab.GetComponent<SpriteRenderer>().color : Color.white;
+        InitializeRenderers();
+    }
+
+    private void InitializeRenderers()
+    {
+        if (renderersInitialized)
+            return;
+        renderersInitialized = true;
+        if (parent)
+        {
+            foreach (Transform child in parent)
+            {
+                if (child.TryGetComponent(out SpriteRenderer renderer))
+                    starRenderers.Add(renderer);
+            }
+        }
+    }
+
+    private void Start()
+    {
+        mainCamera = Camera.main;
+        initialAttempts = Mathf.Max(0, maxStars);
     }
 
     private void Update()
     {
-        if (!starterStarsIsInit)
+        if (!mainCamera || !objectPrefab || !parent)
             return;
 
-        float leftEdgeOfCamera = Camera.main.ViewportToWorldPoint(new Vector3(0, 0, 0)).x - 12;
-
-        // Entferne alle Sterne, die links von der Kamera sind
+        float leftEdge = mainCamera.ViewportToWorldPoint(Vector3.zero).x - 12f;
         for (int i = spawnedStars.Count - 1; i >= 0; i--)
         {
-            if (spawnedStars[i] != null && spawnedStars[i].transform.position.x < leftEdgeOfCamera)
+            GameObject star = spawnedStars[i];
+            if (!star || star.transform.position.x < leftEdge || spawnedStars.Count > maxStars)
             {
-                Destroy(spawnedStars[i]);
+                if (star)
+                {
+                    starRenderers.Remove(star.GetComponent<SpriteRenderer>());
+                    Destroy(star);
+                }
                 spawnedStars.RemoveAt(i);
             }
         }
 
-        if(spawnedStars.Count < maxStars)
-            StartCoroutine(instantiateStar());
+        if (spawnedStars.Count >= Mathf.Max(0, maxStars))
+            return;
+
+        bool initial = initialAttempts > 0;
+        if (initial)
+            initialAttempts--;
+        TrySpawnStar(initial);
     }
 
-    private IEnumerator instantiateStar()
+    private void TrySpawnStar(bool initial)
     {
-        yield return null;
-        
-        GameObject newStar = Instantiate(objectPrefab, parent);
-        float randomScale = Random.Range(minMaxScale.x, minMaxScale.y);
-        newStar.transform.localScale = new Vector2(randomScale, randomScale);
-
-        // Finde eine freie Position
-        Vector3 spawnPosition;
-        bool freePosition = false;
-        do
+        float left = mainCamera.ViewportToWorldPoint(Vector3.zero).x;
+        float right = mainCamera.ViewportToWorldPoint(Vector3.right).x;
+        for (int attempt = 0; attempt < MaxPositionAttempts; attempt++)
         {
-            yield return null;
-
-            float spawnY = Random.Range(minMaxY.x, minMaxY.y);
-            float spawnX = getCameraRightXBorder() + Random.Range(minMaxX.x, minMaxX.y);
-            spawnPosition = new Vector3(spawnX, spawnY, 0);
-            freePosition = true;
-
+            Vector3 position = new Vector3(
+                initial ? Random.Range(left, right) : right + Random.Range(minMaxX.x, minMaxX.y),
+                Random.Range(minMaxY.x, minMaxY.y), 0f);
+            bool available = true;
             foreach (GameObject star in spawnedStars)
             {
-                if (Vector3.Distance(star.transform.position, spawnPosition) < toleranceRadius)
+                if (star && (star.transform.position - position).sqrMagnitude < toleranceRadius * toleranceRadius)
                 {
-                    freePosition = false;
+                    available = false;
                     break;
                 }
             }
-        } while (!freePosition);
+            if (!available)
+                continue;
 
-        newStar.transform.position = spawnPosition;
-        spawnedStars.Add(newStar);
+            GameObject newStar = Instantiate(objectPrefab, position, Quaternion.identity, parent);
+            float scale = Random.Range(minMaxScale.x, minMaxScale.y);
+            newStar.transform.localScale = new Vector3(scale, scale, 1f);
+            SpriteRenderer renderer = newStar.GetComponent<SpriteRenderer>();
+            renderer.color = CurrentColor;
+            starRenderers.Add(renderer);
+            spawnedStars.Add(newStar);
+            return;
+        }
     }
 
-    private IEnumerator startSpawnStarsRoutine()
+    public void SetColor(Color color)
     {
-        Camera mainCamera = Camera.main; // Kamera nur einmal abrufen
-        int retries = 20; // Maximale Anzahl an Versuchen für jeden Stern
-
-        while (spawnedStars.Count < maxStars)
+        InitializeRenderers();
+        if (CurrentColor == color)
+            return;
+        CurrentColor = color;
+        for (int i = starRenderers.Count - 1; i >= 0; i--)
         {
-            GameObject newStar = Instantiate(objectPrefab, parent);
-            float randomScale = Random.Range(minMaxScale.x, minMaxScale.y);
-            newStar.transform.localScale = new Vector2(randomScale, randomScale);
-
-            bool freePos = false;
-            Vector3 spawnPosition = Vector2.zero;
-            for (int i = 0; i < retries && !freePos; i++)
-            {
-                float spawnY = Random.Range(minMaxY.x, minMaxY.y);
-                float spawnX = Random.Range(-getCameraRightXBorder(), getCameraRightXBorder());
-                spawnPosition = new Vector3(spawnX, spawnY, 0);
-
-                freePos = true; // Start with the assumption that the position is free
-                foreach (GameObject star in spawnedStars)
-                {
-                    if (Vector3.Distance(star.transform.position, spawnPosition) < toleranceRadius)
-                    {
-                        freePos = false; // Found a star too close, the position is not free
-                        break;
-                    }
-                }
-            }
-
-            if (freePos)
-            {
-                newStar.transform.position = spawnPosition;
-                spawnedStars.Add(newStar);
-            }
+            if (starRenderers[i])
+                starRenderers[i].color = color;
             else
-            {
-                Destroy(newStar); // Wenn nach allen Versuchen keine freie Position gefunden wurde
-            }
-
-            yield return null; // Eine kurze Pause zwischen den Spawn-Versuchen
-        }
-
-        starterStarsIsInit = true;
-    }
-
-    private float getCameraRightXBorder()
-    {
-        Camera mainCamera = Camera.main;
-        if (mainCamera.orthographic)
-        {
-            // Für orthographische Kameras
-            return mainCamera.transform.position.x + mainCamera.orthographicSize * mainCamera.aspect;
-        }
-        else
-        {
-            // Für perspektivische Kameras
-            return mainCamera.ViewportToWorldPoint(new Vector3(1, 0, 0)).x;
+                starRenderers.RemoveAt(i);
         }
     }
 }

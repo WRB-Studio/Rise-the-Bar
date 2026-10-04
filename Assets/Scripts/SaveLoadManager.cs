@@ -2,56 +2,30 @@ using UnityEngine;
 
 public class SaveLoadManager : MonoBehaviour
 {
-    public static SaveLoadManager instance;
-
-    private void Awake()
-    {
-        instance = this;
-    }
+    private const string DistanceKey = "distance";
+    private const string AccuracyKey = "accuracy";
 
     public static bool saveWhenNewHighscore(float distance, int accuracy)
     {
-        if (isNewHighscore(distance, accuracy))
-        {
-            PlayerPrefs.SetFloat("distance", distance);
-            PlayerPrefs.SetInt("accuracy", accuracy);
+        if (calculateHighscore(distance, accuracy) <= getLastHighscore())
+            return false;
 
-            PlayerPrefs.Save();
-
-            return true;
-        }
-
-        return false;
+        PlayerPrefs.SetFloat(DistanceKey, distance);
+        PlayerPrefs.SetInt(AccuracyKey, accuracy);
+        PlayerPrefs.Save();
+        return true;
     }
 
     public static int calculateHighscore(float distance, int accuracy)
     {
-        return Mathf.RoundToInt(distance * accuracy / 10f);
+        if (float.IsNaN(distance) || float.IsInfinity(distance) || distance <= 0f || accuracy <= 0)
+            return 0;
+        double score = (double)distance * accuracy / 10d;
+        return (int)System.Math.Min(int.MaxValue, System.Math.Round(score, System.MidpointRounding.ToEven));
     }
 
     public static int getLastHighscore()
     {
-        return calculateHighscore(loadDistance(), loadAccuracy());
-    }
-
-    private static bool isNewHighscore(float distance, int accuracy)
-    {
-        float currentHighScore = calculateHighscore(distance, accuracy);
-        int lastHighScore = getLastHighscore();
-
-        if (currentHighScore > lastHighScore)
-            return true;
-
-        return false;
-    }
-
-    private static float loadDistance()
-    {
-        return PlayerPrefs.GetFloat("distance", 0);
-    }
-
-    private static int loadAccuracy()
-    {
-        return PlayerPrefs.GetInt("accuracy", 0);
+        return calculateHighscore(PlayerPrefs.GetFloat(DistanceKey, 0f), PlayerPrefs.GetInt(AccuracyKey, 0));
     }
 }

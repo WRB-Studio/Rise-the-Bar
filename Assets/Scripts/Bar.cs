@@ -1,67 +1,75 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
+[RequireComponent(typeof(BoxCollider2D), typeof(Rigidbody2D), typeof(HingeJoint2D))]
 public class Bar : MonoBehaviour
 {
     public float tipOverSpeed = 1f;
     public float upperAngleLimitBreak = 1f;
 
     private Platform platformParent;
-    private bool hasFallen = false;
-    private Collider2D coll;
-    private Rigidbody2D rb;
-    private HingeJoint2D hingeJointComp;
+    private bool hasFallen;
+    private bool released;
+    private BoxCollider2D coll;
+    private Rigidbody2D body;
+    private HingeJoint2D hinge;
 
+    public float Length => coll.size.y * Mathf.Abs(transform.lossyScale.y);
 
-    private void Start()
+    private void Awake()
     {
-        coll = GetComponent<Collider2D>();
-        rb = GetComponent<Rigidbody2D>();
-        hingeJointComp = GetComponent<HingeJoint2D>();
+        coll = GetComponent<BoxCollider2D>();
+        body = GetComponent<Rigidbody2D>();
+        hinge = GetComponent<HingeJoint2D>();
+    }
+
+    public void SetLength(float length)
+    {
+        if (released)
+            return;
+
+        float delta = Mathf.Max(0.001f, length) - Length;
+        Vector3 scale = transform.localScale;
+        float parentScaleY = transform.parent ? Mathf.Abs(transform.parent.lossyScale.y) : 1f;
+        scale.y += delta / (coll.size.y * Mathf.Max(0.0001f, parentScaleY));
+        transform.localScale = scale;
+        transform.position += Vector3.up * (delta / 2f);
     }
 
     public void tipOverToTheRight(Platform platform)
     {
+        if (released)
+            return;
+
+        released = true;
         platformParent = platform;
-        // get top left points of object
-        Vector2 topLeftPosition = new Vector2(coll.bounds.min.x, coll.bounds.max.y);
-
-        // force for tip over
-        rb.simulated = true;
-        Vector2 tipOverForce = new Vector2(1, 1) * tipOverSpeed;
-        rb.AddForceAtPosition(tipOverForce, topLeftPosition);
-
+        Physics2D.SyncTransforms();
+        body.simulated = true;
+        Vector2 topLeft = new Vector2(coll.bounds.min.x, coll.bounds.max.y);
+        body.AddForceAtPosition(new Vector2(1f, 1f) * tipOverSpeed, topLeft);
         StartCoroutine(CheckIsReady());
     }
 
     private IEnumerator CheckIsReady()
     {
         yield return new WaitForSeconds(0.2f);
-
-        // check if bar has fallen
-        while (rb.linearVelocity.magnitude > 0.01f)
+        float elapsed = 0f;
+        while (elapsed < 5f)
         {
-            yield return null;
-
-            if (hingeJointComp.jointAngle >= upperAngleLimitBreak)
+            if (hinge.enabled && hinge.jointAngle >= upperAngleLimitBreak)
             {
-                hingeJointComp.enabled = false;
+                hinge.enabled = false;
                 break;
             }
-        }
+            if (body.IsSleeping() || (body.linearVelocity.sqrMagnitude <= 0.0001f && Mathf.Abs(body.angularVelocity) <= 1f))
+                break;
 
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
         hasFallen = true;
     }
 
-    public bool getHasFallen()
-    {
-        return hasFallen;
-    }
-
-    public Platform getPlatformParent()
-    {
-        return platformParent;
-    }
-
+    public bool getHasFallen() => hasFallen;
+    public Platform getPlatformParent() => platformParent;
 }

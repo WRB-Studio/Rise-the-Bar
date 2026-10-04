@@ -1,129 +1,136 @@
-using System.Collections;
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody2D), typeof(Collider2D), typeof(SpriteRenderer))]
 public class Player : MonoBehaviour
 {
-    public float checkDistance = 1.0f;
     public Vector2 minMaxIdleSpeed;
-    private float idleSpeed = 0.05f;
     public Vector2 minMaxNormalSpeed;
-    private float normalSpeed = 1f;
-    public float jumpForce = 50;
+    public float jumpForce = 50f;
     public Vector2 jumpDirection = new Vector2(1, 1);
-
     public float bottomDeadZone = -5f;
     public GameObject explosionPrefab;
 
-    private GameObject currentBar;
-    private Vector2 stuckPositionFix;
+    private Rigidbody2D body;
+    private Collider2D bodyCollider;
+    private SpriteRenderer sprite;
+    private PhysicsMaterial2D movementMaterial;
+    private readonly RaycastHit2D[] groundHits = new RaycastHit2D[8];
+    private ContactFilter2D groundFilter;
     private Platform currentPlatform;
-    private bool isDied = false;
+    private Bar currentBar;
+    private Vector2 previousPosition;
+    private float stuckCheckTimer;
+    private float movementSpeed;
+    private bool isDied;
 
     [HideInInspector] public Vector2 startPoint;
-    [HideInInspector] public bool isInit = false;
-
+    [HideInInspector] public bool isInit;
     public static Player instance;
-
+    public Vector2 Position => body.position;
 
     private void Awake()
     {
         instance = this;
+        body = GetComponent<Rigidbody2D>();
+        bodyCollider = GetComponent<Collider2D>();
+        sprite = GetComponent<SpriteRenderer>();
+        // Side friction must not hold the character in the air at a bridge's raised edge.
+        movementMaterial = new PhysicsMaterial2D("Player movement") { friction = 0f, bounciness = 0f };
+        bodyCollider.sharedMaterial = movementMaterial;
+        groundFilter = new ContactFilter2D { useTriggers = false };
+        body.interpolation = RigidbodyInterpolation2D.Interpolate;
+        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
     }
 
     public void init()
     {
-        StartCoroutine(stuckPositionFixRoutine());
-
-        startPoint = transform.position;
-
+        startPoint = body.position;
+        previousPosition = body.position;
         isInit = true;
     }
 
     public void updateCall()
     {
-        if (GameHandler.instance.isGameOver)
-            return;
-
-        if (transform.position.y <= bottomDeadZone)
+        if (!GameHandler.instance.isGameOver && body.position.y <= bottomDeadZone)
         {
             die();
-
             PlatformController.instance.gameOverDestruction();
-
-            return;
         }
-
-        movement();
     }
 
-    private void movement()
+    private void FixedUpdate()
     {
+        if (!isInit || isDied || !GameHandler.instance || GameHandler.instance.isGameOver)
+            return;
+
         if (!BarRaiser.instance.firstTouch)
-            return;
-
-        // increase speed by difficulty
-        float currentDifficulty = GameHandler.instance.currentDifficulty;
-        normalSpeed = Mathf.Lerp(minMaxNormalSpeed.x, minMaxNormalSpeed.y, currentDifficulty);
-        idleSpeed = Mathf.Lerp(minMaxIdleSpeed.x, minMaxIdleSpeed.y, currentDifficulty);
-
-        //controll the speed by platform bar
-        if (currentPlatform)
         {
-            //Idle speed if no bar on current platform or created bar isnt fallen or is not on ground.
-            if (!currentPlatform.barObject || (currentPlatform.barObject && !currentPlatform.barObject.getHasFallen()) || !isGrounded())
+            body.linearVelocity = new Vector2(0f, body.linearVelocity.y);
+            previousPosition = body.position;
+            return;
+        }
+
+        bool grounded = UpdateGroundSupport();
+        float difficulty = GameHandler.instance.currentDifficulty;
+        if (grounded)
+        {
+            movementSpeed = Mathf.Lerp(minMaxNormalSpeed.x, minMaxNormalSpeed.y, difficulty);
+            if (currentPlatform)
             {
-                transform.Translate(Vector2.right * idleSpeed * Time.deltaTime);
-            }
-            else if ((currentPlatform.barObject && currentPlatform.barObject.getHasFallen()))
-            {
-                transform.Translate(Vector2.right * normalSpeed * Time.deltaTime * 2);
+                movementSpeed = currentPlatform.barObject && currentPlatform.barObject.getHasFallen()
+                    ? movementSpeed * 2f
+                    : Mathf.Lerp(minMaxIdleSpeed.x, minMaxIdleSpeed.y, difficulty);
             }
         }
-        else if (!currentPlatform && currentBar)
-            transform.Translate(Vector2.right * normalSpeed * Time.deltaTime);
+
+        // Keep the requested speed in the air; a side collision can temporarily zero actual velocity.
+        body.linearVelocity = new Vector2(movementSpeed, body.linearVelocity.y);
+        stuckCheckTimer += Time.fixedDeltaTime;
+        if (stuckCheckTimer >= 0.2f)
+        {
+            if (movementSpeed > 0f && grounded && Vector2.Distance(previousPosition, body.position) < 0.02f)
+                jump();
+            previousPosition = body.position;
+            stuckCheckTimer = 0f;
+        }
     }
 
-    private IEnumerator stuckPositionFixRoutine()
+    private bool UpdateGroundSupport()
     {
-        yield return null;
-
-        // fix position stuck by jumping.
-        while (true)
+        currentPlatform = null;
+        currentBar = null;
+        float probeDistance = Mathf.Max(0.05f, bodyCollider.bounds.extents.y + 0.02f);
+        int count = bodyCollider.Cast(Vector2.down, groundFilter, groundHits, probeDistance);
+        float nearestDistance = float.MaxValue;
+        for (int i = 0; i < count; i++)
         {
-            stuckPositionFix = transform.position;
-            yield return new WaitForSeconds(0.2f);
+            RaycastHit2D hit = groundHits[i];
+            if (hit.normal.y < 0.5f || hit.distance >= nearestDistance)
+                continue;
 
-            if (Vector2.Distance(stuckPositionFix, transform.position) < 0.02f)
-                jump();
+            if (hit.collider.CompareTag("Platform"))
+            {
+                currentPlatform = hit.collider.GetComponent<Platform>();
+                currentBar = null;
+                nearestDistance = hit.distance;
+            }
+            else if (hit.collider.CompareTag("Bar"))
+            {
+                currentBar = hit.collider.GetComponent<Bar>();
+                currentPlatform = null;
+                nearestDistance = hit.distance;
+            }
         }
+        return currentPlatform || currentBar;
     }
 
     public void jump()
     {
-        if (!isGrounded())
+        if (isDied || GameHandler.instance.isGameOver || !BarRaiser.instance.firstTouch || body.linearVelocity.y > 0.1f || !UpdateGroundSupport())
             return;
 
         AudioController.playJump();
-        Rigidbody2D rb = GetComponent<Rigidbody2D>();
-        rb.AddForce(jumpDirection * jumpForce);
-    }
-
-    private bool isGrounded()
-    {
-        Vector2 position = transform.position; // Die aktuelle Position des Objekts
-        Vector2 direction = Vector2.down; // Die Richtung des Raycasts (nach unten)
-        float distance = transform.localScale.y; // Die Entfernung des Raycasts
-
-        RaycastHit2D[] hits = Physics2D.RaycastAll(position, direction, distance);
-        foreach (var hit in hits)
-        {
-            if (hit.collider != null && (hit.collider.tag == "Platform" || hit.collider.tag == "Bar"))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        body.AddForce(jumpDirection * jumpForce);
     }
 
     public void die()
@@ -132,40 +139,32 @@ public class Player : MonoBehaviour
             return;
 
         isDied = true;
-        GameObject newExplosion = Instantiate(explosionPrefab, transform.position, Quaternion.identity);
-        Destroy(newExplosion, 5);
-        GetComponent<SpriteRenderer>().enabled = false;
+        Destroy(Instantiate(explosionPrefab, transform.position, Quaternion.identity), 5f);
+        sprite.enabled = false;
         AudioController.playDie();
-        GetComponent<Rigidbody2D>().simulated = false;
+        body.simulated = false;
     }
 
     private void OnCollisionEnter2D(Collision2D collision)
     {
-        if (collision.gameObject.tag == "Platform")
-        {
-            currentPlatform = collision.gameObject.GetComponent<Platform>();
-        }
-        else if (collision.gameObject.CompareTag("Bar") && currentBar != collision.gameObject)
-        {
-            Collider2D barCollider = collision.gameObject.GetComponent<Collider2D>();
-            float barTopY = barCollider.bounds.max.y;
-            float barLeftX = barCollider.bounds.min.x;
-            float barRightX = barCollider.bounds.max.x;
-            float playerLeftX = GetComponent<Collider2D>().bounds.min.x;
-            float playerRightX = GetComponent<Collider2D>().bounds.max.x;
+        if (!collision.gameObject.CompareTag("Bar"))
+            return;
 
-            // Prüfe, ob der Spieler links neben der Bar steht
-            if (playerRightX < barLeftX &&
-                Mathf.Abs(transform.position.y - barCollider.bounds.center.y) < barCollider.bounds.size.y / 2)
+        for (int i = 0; i < collision.contactCount; i++)
+        {
+            if (collision.GetContact(i).normal.x < -0.5f)
             {
                 jump();
-            }
-            // Prüfe, ob der Spieler auf der Bar steht
-            else if (transform.position.y > barTopY && playerLeftX < barRightX && playerRightX > barLeftX)
-            {
-                currentBar = collision.gameObject;
+                break;
             }
         }
     }
 
+    private void OnDestroy()
+    {
+        if (movementMaterial)
+            Destroy(movementMaterial);
+        if (instance == this)
+            instance = null;
+    }
 }

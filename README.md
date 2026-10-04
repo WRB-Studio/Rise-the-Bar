@@ -25,11 +25,21 @@
 
 ## Technical details
 
-- **Engine:** Unity `6000.0.59f2`
+- **Engine:** Unity 6; the project version is recorded in [ProjectVersion.txt](ProjectSettings/ProjectVersion.txt).
 - **Status:** Complete
 
 ## Run locally
 
 1. Clone the repository.
-2. Open it in Unity Hub with Unity `6000.0.59f2`.
+2. Open it in Unity Hub with the version recorded in `ProjectSettings/ProjectVersion.txt` (Android Build Support required for mobile builds).
 3. Open a scene in `Assets/Scenes` and press Play.
+
+Hold the left mouse button in the editor or hold one finger on Android to grow a bar. Release to drop it. Interrupted touches and app switches cancel an unfinished bar without spending a retry. Perfect placements award 200 points; two consecutive perfect placements award one retry. Distance measures horizontal progress and freezes when the run ends.
+
+## Validation and Android releases
+
+- Run the EditMode and PlayMode suites in **Window > General > Test Runner**.
+- Android builds target API 36 and use ARM64 with IL2CPP. Install Android SDK platform 36 through Unity Hub/SDK tools if needed.
+- Keep the existing application ID and PlayerPrefs keys when updating the published game so local highscores remain available.
+- Configure the release keystore on the build machine; the saved absolute keystore path is machine-specific.
+- Before publishing, validate the final AAB's 16 KB page-size support and test an Android device: long runs, retries, rapid/multiple touches, app pause/resume, game over and replay.

@@ -1,0 +1,5 @@
+{
+    "name": "RiseTheBar.PlayModeTests",
+    "references": ["RiseTheBar.Runtime", "UnityEngine.UI"],
+    "optionalUnityReferences": ["TestAssemblies"]
+}

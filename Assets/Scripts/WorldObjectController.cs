@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -8,7 +7,7 @@ public class WorldObjectController : MonoBehaviour
     public List<Color> colors;
     public Vector2 minMaxScale;
     public Vector2 ySpawnRange;
-    public Vector2 xSpawnRangeVariation; 
+    public Vector2 xSpawnRangeVariation;
     public Vector2Int minMaxSpawnCount;
     public int maxOnScreen;
     public Vector2 minMaxSpeed;
@@ -16,96 +15,83 @@ public class WorldObjectController : MonoBehaviour
     public Transform spawnParent;
 
     private Camera mainCamera;
-    private List<WorldObject> activeObjects = new List<WorldObject>();
+    private float spawnTimer;
+    private readonly List<WorldObject> activeObjects = new List<WorldObject>();
+
+    private class WorldObject
+    {
+        public Transform transform;
+        public SpriteRenderer renderer;
+        public float speed;
+    }
 
     private void Start()
     {
-        mainCamera = Camera.main; // Hauptkamera holen
-        startSpawn();
-        StartCoroutine(SpawnObjects());
+        mainCamera = Camera.main;
+        if (!mainCamera || prefabs == null || prefabs.Count == 0 || colors == null || colors.Count == 0)
+        {
+            enabled = false;
+            return;
+        }
+        SpawnObjects(true);
     }
 
     private void Update()
     {
-        // Bewege die Objekte und prüfe, ob sie den linken Bildschirmrand erreicht haben
+        float leftEdge = mainCamera.ViewportToWorldPoint(Vector3.zero).x;
         for (int i = activeObjects.Count - 1; i >= 0; i--)
         {
-            activeObjects[i].transform.Translate(-activeObjects[i].speed * Time.deltaTime, 0, 0);
-            if (activeObjects[i].transform.position.x < mainCamera.ScreenToWorldPoint(Vector3.zero).x)
+            WorldObject worldObject = activeObjects[i];
+            if (!worldObject.transform)
             {
-                Destroy(activeObjects[i]);
+                activeObjects.RemoveAt(i);
+                continue;
+            }
+            worldObject.transform.Translate(Vector3.left * (worldObject.speed * Time.deltaTime), Space.World);
+            if (worldObject.renderer.bounds.max.x < leftEdge)
+            {
+                Destroy(worldObject.transform.gameObject);
                 activeObjects.RemoveAt(i);
             }
         }
-    }
 
-    private IEnumerator SpawnObjects()
-    {
-        while (true)
+        spawnTimer += Time.deltaTime;
+        if (spawnTimer >= Mathf.Max(0.05f, spawnInterval))
         {
-            // Wenn die maximale Anzahl erreicht ist, warte bis zum nächsten Frame
-            if (activeObjects.Count >= maxOnScreen)
-            {
-                yield return null;
-                continue;
-            }
-
-            int spawnCount = Random.Range(minMaxSpawnCount.x, minMaxSpawnCount.y + 1);
-            spawnCount = Mathf.Min(spawnCount, maxOnScreen - activeObjects.Count); // Nicht mehr spawnen als max erlaubt
-
-            for (int i = 0; i < spawnCount; i++)
-            {
-                GameObject newObj = Instantiate(prefabs[Random.Range(0, prefabs.Count)], spawnParent);
-
-                float randomScale = Random.Range(minMaxScale.x, minMaxScale.y);
-                newObj.transform.localScale = new Vector2(Random.value < 0.5f ? randomScale : -randomScale, randomScale);
-
-                SpriteRenderer spriteRenderer = newObj.GetComponent<SpriteRenderer>(); // Zugriff auf SpriteRenderer optimieren
-                float spriteWidth = spriteRenderer != null ? spriteRenderer.bounds.size.x : 0f;
-                float spawnY = Random.Range(ySpawnRange.x, ySpawnRange.y);
-                float spawnX = mainCamera.ScreenToWorldPoint(new Vector3(mainCamera.pixelWidth, 0, 0)).x + Random.Range(xSpawnRangeVariation.x, xSpawnRangeVariation.y) + spriteWidth;
-                newObj.transform.position = new Vector3(spawnX, spawnY, 0);
-
-                spriteRenderer.color = colors[Random.Range(0, colors.Count)];
-
-                WorldObject worldObjectScript = newObj.AddComponent<WorldObject>();
-                worldObjectScript.speed = Random.Range(minMaxSpeed.x, minMaxSpeed.y);
-
-                activeObjects.Add(worldObjectScript);
-            }
-
-            yield return new WaitForSeconds(spawnInterval);
+            spawnTimer = 0f;
+            SpawnObjects(false);
         }
     }
 
-    private void startSpawn()
+    private void SpawnObjects(bool initial)
     {
-        int spawnCount = minMaxSpawnCount.y;
-        spawnCount = Mathf.Min(spawnCount, maxOnScreen - activeObjects.Count); // Nicht mehr spawnen als max erlaubt
-
+        int spawnCount = initial ? minMaxSpawnCount.y : Random.Range(minMaxSpawnCount.x, minMaxSpawnCount.y + 1);
+        spawnCount = Mathf.Clamp(spawnCount, 0, Mathf.Max(0, maxOnScreen - activeObjects.Count));
+        float rightEdge = mainCamera.ViewportToWorldPoint(Vector3.right).x;
         for (int i = 0; i < spawnCount; i++)
         {
-            GameObject newObj = Instantiate(prefabs[Random.Range(0, prefabs.Count)], spawnParent);
-
-            float randomScale = Random.Range(minMaxScale.x, minMaxScale.y);
-            newObj.transform.localScale = new Vector2(Random.value < 0.5f ? randomScale : -randomScale, randomScale);
-
-            float spawnY = Random.Range(ySpawnRange.x, ySpawnRange.y);
-            float spawnX = Random.Range(-xSpawnRangeVariation.y, xSpawnRangeVariation.y);
-            newObj.transform.position = new Vector3(spawnX, spawnY, 0);
-
-            SpriteRenderer spriteRenderer = newObj.GetComponent<SpriteRenderer>(); // Zugriff auf SpriteRenderer optimieren
-            spriteRenderer.color = colors[Random.Range(0, colors.Count)];
-
-            WorldObject worldObjectScript = newObj.AddComponent<WorldObject>();
-            worldObjectScript.speed = Random.Range(minMaxSpeed.x, minMaxSpeed.y);
-
-            activeObjects.Add(worldObjectScript);
+            GameObject prefab = prefabs[Random.Range(0, prefabs.Count)];
+            if (!prefab)
+                continue;
+            GameObject newObject = Instantiate(prefab, spawnParent);
+            if (!newObject.TryGetComponent(out SpriteRenderer renderer))
+            {
+                Destroy(newObject);
+                continue;
+            }
+            float scale = Random.Range(minMaxScale.x, minMaxScale.y);
+            newObject.transform.localScale = new Vector3(Random.value < 0.5f ? scale : -scale, scale, 1f);
+            float x = initial
+                ? Random.Range(-xSpawnRangeVariation.y, xSpawnRangeVariation.y)
+                : rightEdge + Random.Range(xSpawnRangeVariation.x, xSpawnRangeVariation.y) + renderer.bounds.size.x;
+            newObject.transform.position = new Vector3(x, Random.Range(ySpawnRange.x, ySpawnRange.y), 0f);
+            renderer.color = colors[Random.Range(0, colors.Count)];
+            activeObjects.Add(new WorldObject
+            {
+                transform = newObject.transform,
+                renderer = renderer,
+                speed = Random.Range(minMaxSpeed.x, minMaxSpeed.y)
+            });
         }
     }
-}
-
-public class WorldObject : MonoBehaviour
-{
-    public float speed = 1;
 }

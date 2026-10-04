@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 public class PlatformController : MonoBehaviour
@@ -16,32 +15,27 @@ public class PlatformController : MonoBehaviour
     public Vector2 minMaxPlatformDistancePosition;
     public float platformDistancePercentVariation;
     public float removeDistance = 10f;
-    private List<GameObject> platforms = new List<GameObject>();
 
     [Header("RaiseBarTrigger")]
     public GameObject raiseBarTriggerPrefab;
     public float xOffset = 0.05f;
 
-    private Camera mainCamera;
-
-    [HideInInspector]
-    public bool isInit = false;
-
+    private readonly List<GameObject> platforms = new List<GameObject>();
+    private bool destructionStarted;
+    [HideInInspector] public bool isInit;
     public static PlatformController instance;
 
+    public Platform FirstPlatform => platforms.Count > 0 ? platforms[0].GetComponent<Platform>() : null;
 
-    private void Awake()
-    {
-        instance = this;
-    }
+    private void Awake() => instance = this;
 
     public void init()
     {
-        mainCamera = Camera.main;
+        if (isInit)
+            return;
 
-        for (int i = 0; i < minPlatforms; i++)
-            createPlatform();
-
+        for (int i = 0; i < Mathf.Max(2, minPlatforms); i++)
+            CreatePlatform();
         isInit = true;
     }
 
@@ -50,145 +44,111 @@ public class PlatformController : MonoBehaviour
         if (GameHandler.instance.isGameOver)
             return;
 
-        //remove platforms out of left range and create new on right side.
-        if (verifyAndRemovePlatforms())
-            createPlatform();
-    }
-
-    private bool verifyAndRemovePlatforms()
-    {
-        //remove platforms out of left range
-        GameObject[] tmpPlatforms = platforms.ToArray();
-        for (int i = 0; i < tmpPlatforms.Length; i++)
+        while (platforms.Count > 0 && CameraController.isOutsideLeftCameraEdge(platforms[0], -removeDistance))
         {
-            if (CameraController.isOutsideLeftCameraEdge(tmpPlatforms[i]))
-            {
-                removePlatform(tmpPlatforms[i]);
-                return true;
-            }
+            Destroy(platforms[0]);
+            platforms.RemoveAt(0);
         }
 
-        return false;
+        while (platforms.Count < Mathf.Max(2, minPlatforms))
+            CreatePlatform();
     }
 
-    private GameObject createPlatform()
+    private void CreatePlatform()
     {
-        GameObject newPlatform = Instantiate(platformPrefab);
+        GameObject platform = Instantiate(platformPrefab);
+        float difficulty = GameHandler.instance.currentDifficulty;
+        float minLength = Mathf.Lerp(minMaxPlatformLength.x, minMaxPlatformLength.y, difficulty);
+        float maxLength = Mathf.Lerp(minMaxPlatformLength.y, minMaxPlatformLength.x, difficulty);
+        float length = platforms.Count == 0
+            ? minMaxPlatformLength.y
+            : Random.Range(Mathf.Min(minLength, maxLength), Mathf.Max(minLength, maxLength));
 
-        newPlatform = calculateAndSetPositionAndScale(newPlatform);
-
-        createRaiseBarTrigger(newPlatform);
-
-        platforms.Add(newPlatform);
-
-        return newPlatform;
-    }
-
-    private GameObject calculateAndSetPositionAndScale(GameObject platform)
-    {
-        float randomLength;
-        float randomDistancePosition;
-
-        Vector2 randomScale;
-        Vector2 randomPosition;
-
-        if (platforms.Count > 0) //first element
+        Vector3 scale = platform.transform.localScale;
+        scale.x = length;
+        scale.y = platformScaleY;
+        platform.transform.localScale = scale;
+        Vector2 position = startPlatformPosition;
+        if (platforms.Count > 0)
         {
-            //Calculate random length and height scale
-            float minLenghthCalcByDifficulty = Mathf.Lerp(minMaxPlatformLength.x, minMaxPlatformLength.y, GameHandler.instance.currentDifficulty);
-            float maxLenghthCalcByDifficulty = Mathf.Lerp(minMaxPlatformLength.y, minMaxPlatformLength.x, GameHandler.instance.currentDifficulty);
-            randomLength = Random.Range(minLenghthCalcByDifficulty, maxLenghthCalcByDifficulty);
-            randomScale = new Vector2(randomLength, platformScaleY);
-
-            //Calculate random space between last platform and new platform.
-            float lastPlatformPositionX = platforms[platforms.Count - 1].transform.position.x;
-            float platformDistanceWithoutSpace = platforms[platforms.Count - 1].transform.localScale.x / 2 + platform.transform.localScale.x / 2;
-            float randomSpace = Mathf.Lerp(minMaxPlatformDistancePosition.x, minMaxPlatformDistancePosition.y, GameHandler.instance.currentDifficulty);
-            randomSpace = Random.Range(randomSpace, randomSpace + (randomSpace / 100 * platformDistancePercentVariation));
-            randomDistancePosition = lastPlatformPositionX + platformDistanceWithoutSpace + randomSpace;
-
-            randomPosition = new Vector2(randomDistancePosition, platformPositionY);
+            Transform previous = platforms[platforms.Count - 1].transform;
+            float gap = Mathf.Lerp(minMaxPlatformDistancePosition.x, minMaxPlatformDistancePosition.y, difficulty);
+            gap = Random.Range(gap, gap * (1f + Mathf.Max(0f, platformDistancePercentVariation) / 100f));
+            position = new Vector2(previous.position.x + previous.localScale.x / 2f + length / 2f + gap, platformPositionY);
         }
-        else
-        {
-            randomLength = Random.Range(minMaxPlatformLength.y, minMaxPlatformLength.y);
-            randomScale = new Vector2(randomLength, platform.transform.localScale.y);
+        platform.transform.position = position;
 
-            randomPosition = startPlatformPosition;
-        }
+        Transform corner = platform.transform.Find("RightTopCorner");
+        GameObject trigger = Instantiate(raiseBarTriggerPrefab);
+        trigger.transform.position = new Vector2(corner.position.x - xOffset, corner.position.y);
+        trigger.transform.SetParent(platform.transform, true);
+        platform.GetComponent<Platform>().barMountPoint = trigger.GetComponent<BarMountPoint>();
+        platforms.Add(platform);
 
-        platform.transform.localScale = randomScale;
-        platform.transform.position = randomPosition;
-
-        return platform;
+        // New colliders must have current bounds before bar input is processed in this frame.
+        Physics2D.SyncTransforms();
     }
 
-    private void createRaiseBarTrigger(GameObject parentPlatform)
-    {
-        Transform raiseBarTriggerPoint = parentPlatform.transform.Find("RightTopCorner");
-        GameObject newTriggerPoint = Instantiate(raiseBarTriggerPrefab);
-        newTriggerPoint.transform.position = new Vector2(raiseBarTriggerPoint.position.x - xOffset, raiseBarTriggerPoint.position.y);
-        newTriggerPoint.transform.parent = parentPlatform.transform;
+    public IReadOnlyList<GameObject> getPlatforms() => platforms;
 
-        parentPlatform.GetComponent<Platform>().barMountPoint = newTriggerPoint.GetComponent<BarMountPoint>();
+    public Platform GetNextPlatform(Platform current)
+    {
+        int index = current ? platforms.IndexOf(current.gameObject) : -1;
+        return index >= 0 && index + 1 < platforms.Count ? platforms[index + 1].GetComponent<Platform>() : null;
     }
 
-    private void removePlatform(GameObject platform)
+    public Platform GetPreviousPlatform(Platform current)
     {
-        platforms.Remove(platform);
-        Destroy(platform);
-    }
-
-    public List<GameObject> getPlatforms()
-    {
-        return platforms;
+        int index = current ? platforms.IndexOf(current.gameObject) : -1;
+        return index > 0 ? platforms[index - 1].GetComponent<Platform>() : null;
     }
 
     public void gameOverDestruction()
     {
-        StartCoroutine(gameOverDestructionRoutine());        
+        if (destructionStarted)
+            return;
+
+        destructionStarted = true;
+        GameHandler.instance.setIsGameOver();
+        StartCoroutine(GameOverDestructionRoutine());
     }
 
-    private IEnumerator gameOverDestructionRoutine()
+    private IEnumerator GameOverDestructionRoutine()
     {
-        GameHandler.instance.setIsGameOver();
-
         yield return new WaitForSeconds(0.75f);
         Player.instance.GetComponent<Rigidbody2D>().simulated = false;
 
-        List<GameObject> reversedPlatforms = platforms;
-        reversedPlatforms.Reverse();
-        for (int i = 0; i < reversedPlatforms.Count; i++)
+        for (int i = platforms.Count - 1; i >= 0; i--)
         {
-            GameObject platform = reversedPlatforms[i];
-
+            GameObject platform = platforms[i];
             yield return new WaitForSeconds(Random.Range(0.01f, 0.2f));
+            if (!platform)
+                continue;
 
-            GameObject newPlatformExplosion = Instantiate(platformExplosionPrefab, platform.transform.position, Quaternion.identity);
-            Destroy(newPlatformExplosion, 5f);
-
-            ParticleSystem particleSystem = newPlatformExplosion.GetComponent<ParticleSystem>();
-            if (particleSystem != null)
+            GameObject explosion = Instantiate(platformExplosionPrefab, platform.transform.position, Quaternion.identity);
+            Destroy(explosion, 5f);
+            ParticleSystem particles = explosion.GetComponent<ParticleSystem>();
+            if (particles)
             {
-                ParticleSystem.ShapeModule shapeModule = particleSystem.shape;
-                shapeModule.shapeType = ParticleSystemShapeType.Box; // Setzt den Shape-Typ auf Rectangle
-                Collider2D platformCollider = platform.GetComponent<Collider2D>();
-                shapeModule.scale = new Vector3(platformCollider.bounds.size.x, platformCollider.bounds.size.y, 1); // Z Tiefe muss definiert werden, z.B. auf 1, da es sich um ein 2D-Objekt handelt
+                ParticleSystem.ShapeModule shape = particles.shape;
+                shape.shapeType = ParticleSystemShapeType.Box;
+                Vector3 size = platform.GetComponent<Collider2D>().bounds.size;
+                shape.scale = new Vector3(size.x, size.y, 1f);
             }
-
             platform.SetActive(false);
         }
 
-        for (int i = 0; i < platforms.Count; i++)
-        {
-            GameObject platform = platforms[i];
-            platforms.Remove(platform);
+        foreach (GameObject platform in platforms)
             Destroy(platform);
-        }
+        platforms.Clear();
 
         yield return new WaitForSeconds(0.75f);
-
         Player.instance.die();
     }
 
+    private void OnDestroy()
+    {
+        if (instance == this)
+            instance = null;
+    }
 }

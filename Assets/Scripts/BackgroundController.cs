@@ -1,7 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using UnityEditor;
 using UnityEngine;
 
 public class BackgroundController : MonoBehaviour
@@ -12,40 +8,25 @@ public class BackgroundController : MonoBehaviour
     public Color endStarColor;
     public float colorEndDistance;
 
-    private Player player;
     private Camera mainCamera;
-    private List<GameObject> stars;
-
-
-
-    public void Awake()
-    {
-        
-    }
+    private StarsController stars;
 
     private void Start()
     {
-        player = Player.instance;
-        Camera.main.backgroundColor = startBgColor;
-        stars = new List<GameObject>();
-        foreach (Transform child in GameObject.Find("Stars").transform)
-        {
-            if (child.name == "Star")
-            {
-                stars.Add(child.gameObject);
-            }
-        }
+        mainCamera = Camera.main;
+        stars = FindFirstObjectByType<StarsController>(FindObjectsInactive.Include);
+        UpdateColors();
     }
 
-    private void Update()
+    private void Update() => UpdateColors();
+
+    private void UpdateColors()
     {
-        float distance = Vector2.Distance(player.transform.position, player.startPoint);
-        Camera.main.backgroundColor = Color.Lerp(startBgColor, endBgColor, distance / colorEndDistance);
-
-        foreach (GameObject star in stars)
-        {
-            star.GetComponent<SpriteRenderer>().color = Color.Lerp(startStarColor, endStarColor, distance / colorEndDistance);
-        }
+        if (!mainCamera || !GameHandler.instance)
+            return;
+        float progress = colorEndDistance > 0f ? GameHandler.instance.Distance / colorEndDistance : 1f;
+        mainCamera.backgroundColor = Color.Lerp(startBgColor, endBgColor, progress);
+        if (stars)
+            stars.SetColor(Color.Lerp(startStarColor, endStarColor, progress));
     }
-
 }

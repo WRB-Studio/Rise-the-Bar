@@ -1,8 +1,8 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.Serialization;
 
 public class GUI : MonoBehaviour
 {
@@ -28,15 +28,16 @@ public class GUI : MonoBehaviour
     public float countDurationHighscore;
     public float gameOverAnimationSpeed;
 
-    [HideInInspector] public float distance = 0;
-    [HideInInspector] public float timer = 0;
-    [HideInInspector] public int accuracy = 0;
-    public int retries = 0;
-    public int nSuccessAttemptsForRetry = 0;
-    public int attemptsInRow = 0;
+    [FormerlySerializedAs("retries")] public int startingRetries = 3;
+    [FormerlySerializedAs("nSuccessAttemptsForRetry")] public int perfectsForRetry = 2;
 
     private bool isNewHighscore = false;
     private Coroutine curVisualCountingRoutine;
+    private int displayedAccuracy;
+    private int accuracyTarget;
+    private int displayedRetries = -1;
+    private int displayedDistance = -1;
+    private bool gameOverShown;
 
     [HideInInspector]
     public bool isInit = false;
@@ -46,105 +47,78 @@ public class GUI : MonoBehaviour
 
     private void Awake()
     {
-        addAccuracy(0);
         instance = this;
     }
 
     public void init()
     {
-        btnReplay.onClick.AddListener(() =>
+        if (isInit)
+            return;
+        btnReplay.onClick.AddListener(Replay);
+        Canvas canvas = panelTop.GetComponentInParent<Canvas>();
+        foreach (Graphic graphic in canvas.GetComponentsInChildren<Graphic>(true))
         {
-            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
-        });
-
-        txtRetries.text = retries.ToString();
+            if (!graphic.GetComponentInParent<Selectable>())
+                graphic.raycastTarget = false;
+        }
+        txtAccuracy.text = "0";
+        updateCall();
 
         isInit = true;
     }
 
     public void updateCall()
     {
-        if (!BarRaiser.instance.firstTouch)
-            return;
-
-        updateTimer();
-
-        updateTraveledDistance(Vector2.Distance(Player.instance.startPoint, Player.instance.transform.position));
-
+        GameHandler game = GameHandler.instance;
+        int distance = Mathf.RoundToInt(game.Distance);
+        if (distance != displayedDistance)
+        {
+            displayedDistance = distance;
+            txtTraveledDistance.text = distance + " m";
+        }
+        if (game.Retries != displayedRetries)
+        {
+            displayedRetries = game.Retries;
+            txtRetries.text = displayedRetries.ToString();
+        }
+        if (game.Accuracy != accuracyTarget)
+        {
+            accuracyTarget = game.Accuracy;
+            if (curVisualCountingRoutine != null)
+                StopCoroutine(curVisualCountingRoutine);
+            curVisualCountingRoutine = StartCoroutine(visualCountingRoutine(displayedAccuracy, accuracyTarget));
+        }
     }
 
     public void showGameOver()
     {
-        isNewHighscore = SaveLoadManager.saveWhenNewHighscore(distance, accuracy);
+        if (gameOverShown)
+            return;
+        gameOverShown = true;
+        updateCall();
+        isNewHighscore = SaveLoadManager.saveWhenNewHighscore(GameHandler.instance.Distance, GameHandler.instance.Accuracy);
         StartCoroutine(showHighscoreAnimationRoutine());
         StartCoroutine(skipHighscoreRoutine());
     }
 
-    public void updateTraveledDistance(float value)
+    private void Replay()
     {
-        distance = value;
-        txtTraveledDistance.text = Mathf.RoundToInt(value) + " m";
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
-    public void updateTimer()
+    private IEnumerator visualCountingRoutine(int startValue, int endValue)
     {
-        if (GameHandler.instance.isGameOver)
-            return;
-        timer += Time.deltaTime;
-    }
-
-    public void addAccuracy(int value)
-    {
-        txtAccuracy.text = accuracy.ToString();
-        if(curVisualCountingRoutine != null)
-            StopCoroutine(curVisualCountingRoutine);
-            
-        accuracy += value;
-        curVisualCountingRoutine = StartCoroutine(visualCountingRoutine(value));
-    }
-
-    public void addRetries(int value)
-    {
-        retries += value;
-        txtRetries.text = retries.ToString();
-    }
-
-    public void addPerfectBarAttempt(bool isSuccess)
-    {
-        if (isSuccess)
-        {
-            attemptsInRow++;
-
-            if (attemptsInRow % nSuccessAttemptsForRetry == 0)
-            {
-                addRetries(1);
-            }
-        }
-        else
-        {
-            attemptsInRow = 0;
-            addRetries(-1);
-        }
-    }
-
-    private IEnumerator visualCountingRoutine(int value)
-    {
-        float duration = 1.0f;
-        int startValue = accuracy;
-        int endValue = accuracy + value;
-        float time = 0;
-        int tmpValue = accuracy;
-
-        while (time < duration)
+        float time = 0f;
+        while (time < 1f)
         {
             time += Time.deltaTime;
-            float t = time / duration;
-            tmpValue = Mathf.RoundToInt(Mathf.Lerp(startValue, endValue, t));
-            txtAccuracy.text = accuracy.ToString();
+            displayedAccuracy = Mathf.RoundToInt(Mathf.Lerp(startValue, endValue, time));
+            txtAccuracy.text = displayedAccuracy.ToString();
             yield return null;
         }
-
-        txtAccuracy.text = accuracy.ToString();
+        displayedAccuracy = endValue;
+        txtAccuracy.text = endValue.ToString();
+        curVisualCountingRoutine = null;
     }
 
     private IEnumerator showHighscoreAnimationRoutine()
@@ -172,7 +146,7 @@ public class GUI : MonoBehaviour
         gameOverTraveled.gameObject.SetActive(true);
         StartCoroutine(countToTargetRoutine(
             gameOverTraveled.transform.GetChild(1).GetComponent<Text>(),
-            distance,
+            GameHandler.instance.Distance,
             countDuration,
             2,
             " m"));
@@ -181,7 +155,7 @@ public class GUI : MonoBehaviour
         gameOverAccuracy.gameObject.SetActive(true);
         StartCoroutine(countToTargetRoutine(
             gameOverAccuracy.transform.GetChild(1).GetComponent<Text>(),
-            accuracy,
+            GameHandler.instance.Accuracy,
             countDuration,
             0,
             " Pts."));
@@ -195,7 +169,7 @@ public class GUI : MonoBehaviour
         yield return new WaitForSeconds(gameOverAnimationSpeed);
 
         highscore.gameObject.SetActive(true);
-        float highscoreValue = SaveLoadManager.calculateHighscore(distance, accuracy);
+        float highscoreValue = SaveLoadManager.calculateHighscore(GameHandler.instance.Distance, GameHandler.instance.Accuracy);
         StartCoroutine(countToTargetRoutine(
             highscore.transform.GetChild(1).GetComponent<Text>(),
             highscoreValue,
@@ -255,7 +229,7 @@ public class GUI : MonoBehaviour
 
         string format = "F" + decimalPlaces;
 
-        if (targetValue != 0)
+        if (targetValue != 0 && duration > 0f)
         {
             AudioController.playCounting(duration);
             while (elapsedTime < duration)
@@ -270,5 +244,11 @@ public class GUI : MonoBehaviour
         textElement.text = targetValue.ToString(format) + suffix;
     }
 
-
+    private void OnDestroy()
+    {
+        if (btnReplay)
+            btnReplay.onClick.RemoveListener(Replay);
+        if (instance == this)
+            instance = null;
+    }
 }
