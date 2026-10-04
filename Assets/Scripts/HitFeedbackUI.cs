@@ -41,7 +41,7 @@ public class HitFeedbackUI : MonoBehaviour
         Image badgeImage = comboBadge.GetComponent<Image>();
         badgeImage.sprite = roundedPanelSprite;
         badgeImage.type = Image.Type.Sliced;
-        badgeImage.color = new Color(0.04f, 0.06f, 0.1f, 0.82f);
+        badgeImage.color = new Color(0.04f, 0.06f, 0.1f, 0.76f);
         badgeImage.raycastTarget = false;
         ComboText = CreateText("Combo", badgeRect, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(190f, 40f), 24);
         ComboText.color = comboColor;
@@ -56,7 +56,7 @@ public class HitFeedbackUI : MonoBehaviour
         Image background = root.GetComponent<Image>();
         background.sprite = roundedPanelSprite;
         background.type = Image.Type.Sliced;
-        background.color = new Color(0.04f, 0.06f, 0.1f, 0.78f);
+        background.color = new Color(0.04f, 0.06f, 0.1f, 0.72f);
         background.raycastTarget = false;
         perfectGroup = root.GetComponent<CanvasGroup>();
         perfectGroup.blocksRaycasts = false;
