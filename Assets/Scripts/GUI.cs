@@ -15,6 +15,7 @@ public class GUI : MonoBehaviour
     [Header("GameOver GUI elements")]
     public Transform gameOverPanel;
     public Button btnReplay;
+    public Button btnPrivacyPolicy;
     public GameObject gameOverTraveled;
     public GameObject gameOverAccuracy;
     public GameObject seperator;
@@ -56,6 +57,8 @@ public class GUI : MonoBehaviour
         if (isInit)
             return;
         btnReplay.onClick.AddListener(Replay);
+        if (btnPrivacyPolicy)
+            btnPrivacyPolicy.onClick.AddListener(OpenPrivacyPolicy);
         Canvas canvas = panelTop.GetComponentInParent<Canvas>();
         foreach (Graphic graphic in canvas.GetComponentsInChildren<Graphic>(true))
         {
@@ -102,6 +105,11 @@ public class GUI : MonoBehaviour
         isNewHighscore = SaveLoadManager.saveWhenNewHighscore(GameHandler.instance.Distance, GameHandler.instance.Accuracy);
         StartCoroutine(showHighscoreAnimationRoutine());
         StartCoroutine(skipHighscoreRoutine());
+    }
+
+    private void OpenPrivacyPolicy()
+    {
+        Application.OpenURL("https://www.privacypolicies.com/live/57007ef0-ae99-43dd-8d0f-0c35275a0831");
     }
 
     private void Replay()
@@ -251,6 +259,8 @@ public class GUI : MonoBehaviour
     {
         if (btnReplay)
             btnReplay.onClick.RemoveListener(Replay);
+        if (btnPrivacyPolicy)
+            btnPrivacyPolicy.onClick.RemoveListener(OpenPrivacyPolicy);
         if (instance == this)
             instance = null;
     }
