@@ -97,3 +97,21 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Android release credentials (keep outside the repository)
+[Ss]ecrets/
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+release-secrets.xml
+drive-export.json
+.env
+.env.*
+!.env.example
+*service-account*.json
+*service_account*.json
+
+device-build.json

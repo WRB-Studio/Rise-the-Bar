@@ -1,0 +1,17 @@
+{
+  "packageName": "com.wrbstudio.raisethebar",
+  "listings": [
+    {
+      "language": "de-DE",
+      "shortDescription": "Von Plattform zu Plattform durch den Weltraum. Wie weit kommst du?",
+      "fullDescription": "Bau Brücken zwischen schwebenden Plattformen und versuch, deinen Highscore zu schlagen. Je weiter du kommst, desto schneller wird’s. Perfekte Treffer bringen dir zusätzliche Punkte und neue Versuche.",
+      "releaseNotes": "- Combo-Boni und deutlichere Rückmeldungen bei perfekten Treffern\n- Optionale Vibration\n- Fehler bei Touch-Eingaben, Spielpausen und Neustarts behoben"
+    },
+    {
+      "language": "en-US",
+      "shortDescription": "From platform to platform through space. How far can you go?",
+      "fullDescription": "Build bridges between floating platforms and try to beat your high score. The further you go, the faster it gets. Perfect hits earn you extra points and extra tries.",
+      "releaseNotes": "- Combo bonuses and clearer feedback for perfect hits\n- Optional vibration\n- Fixed issues with touch controls, pausing and restarting"
+    }
+  ]
+}
